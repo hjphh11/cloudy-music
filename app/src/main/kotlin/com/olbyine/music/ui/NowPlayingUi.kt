@@ -292,9 +292,7 @@ internal fun PlayerPage(
                             showLyricTools = listening == null,
                             quickActions = { close ->
                                 val songId = track.id.removePrefix("ncm:").toLongOrNull()?.takeIf { track.id.startsWith("ncm:") }
-                                val scId = track.id.removePrefix("sc:").toLongOrNull()?.takeIf { track.id.startsWith("sc:") }
                                 val openComments = LocalNeteaseComments.current
-                                val openScComments = LocalScComments.current
                                 MenuQuickAction(Icons.Rounded.Lyrics, "歌词") { close(); onLyrics() }
                                 if (listening == null) {
                                     MenuQuickAction(Icons.AutoMirrored.Rounded.PlaylistAdd, "加入歌单") { close(); onAddToPlaylist() }
@@ -302,8 +300,6 @@ internal fun PlayerPage(
                                     when {
                                         songId != null && openComments != null ->
                                             MenuQuickAction(Icons.Rounded.ChatBubbleOutline, "评论") { close(); openComments(songId, track.title) }
-                                        scId != null && openScComments != null ->
-                                            MenuQuickAction(Icons.Rounded.ChatBubbleOutline, "评论") { close(); openScComments(scId, track.title) }
                                         else -> MenuQuickAction(Icons.Rounded.Person, "信息") { close(); onInfo() }
                                     }
                                 } else {
@@ -1161,12 +1157,8 @@ private fun TrackTitleRow(track: Track, onFavorite: (() -> Unit)?, onComposer: (
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
                     val openNcm = LocalNeteaseComments.current
-                    val openSc = LocalScComments.current
-                    val comments: (() -> Unit)? = when {
-                        track.id.startsWith("ncm:") -> track.id.removePrefix("ncm:").toLongOrNull()?.let { id -> openNcm?.let { { it(id, track.title) } } }
-                        track.id.startsWith("sc:") -> track.id.removePrefix("sc:").toLongOrNull()?.let { id -> openSc?.let { { it(id, track.title) } } }
-                        else -> null
-                    }
+                    val comments: (() -> Unit)? =
+                        if (track.id.startsWith("ncm:")) track.id.removePrefix("ncm:").toLongOrNull()?.let { id -> openNcm?.let { { it(id, track.title) } } } else null
                     if (comments != null) {
                         Box(
                             Modifier.size(46.dp).clip(CircleShape).pressable(pressedScale = .8f, label = "评论", onClick = comments),

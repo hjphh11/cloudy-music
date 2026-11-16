@@ -152,8 +152,6 @@ class SettingsRepository(context: Context) {
 
     fun setNeteaseDownloadCover(value: Boolean) = update { it.copy(neteaseDownloadCover = value) }
 
-    fun setKuwoQuality(value: String) = update { it.copy(kuwoQuality = value) }
-
     fun setAutoUpdateCheck(value: Boolean) = update { it.copy(autoUpdateCheck = value) }
     fun setNeteaseQuality(value: String) = update { it.copy(neteaseQuality = value) }
 
@@ -166,8 +164,6 @@ class SettingsRepository(context: Context) {
     fun setStartPage(value: String) = update { it.copy(startPage = value) }
 
     fun setStartLibrarySection(value: String) = update { it.copy(startLibrarySection = value) }
-
-    fun setStartStreamingProvider(value: String) = update { it.copy(startStreamingProvider = value) }
 
     private fun update(transform: (UserSettings) -> UserSettings) {
         val next = transform(_settings.value)
@@ -247,7 +243,6 @@ class SettingsRepository(context: Context) {
             .putString(KEY_NETEASE_DOWNLOAD_QUALITY, next.neteaseDownloadQuality)
             .putBoolean(KEY_NETEASE_DOWNLOAD_LYRICS, next.neteaseDownloadLyrics)
             .putBoolean(KEY_NETEASE_DOWNLOAD_COVER, next.neteaseDownloadCover)
-            .putString(KEY_KUWO_QUALITY, next.kuwoQuality)
             .putBoolean(KEY_AUTO_UPDATE, next.autoUpdateCheck)
             .putString(KEY_NETEASE_QUALITY, next.neteaseQuality)
                 .putString(KEY_PLAYER_FULLSCREEN, next.playerFullscreen)
@@ -255,7 +250,6 @@ class SettingsRepository(context: Context) {
                 .putBoolean(KEY_MULTI_APP_PLAYBACK, next.multiAppPlayback)
                 .putString(KEY_START_PAGE, next.startPage)
                 .putString(KEY_START_LIBRARY_SECTION, next.startLibrarySection)
-                .putString(KEY_START_PROVIDER, next.startStreamingProvider)
             .apply()
         com.olbyine.music.playback.AudioEffects.update(next)
     }
@@ -355,7 +349,6 @@ class SettingsRepository(context: Context) {
             neteaseDownloadQuality = s(KEY_NETEASE_DOWNLOAD_QUALITY, null) ?: "exhigh",
             neteaseDownloadLyrics = b(KEY_NETEASE_DOWNLOAD_LYRICS, true),
             neteaseDownloadCover = b(KEY_NETEASE_DOWNLOAD_COVER, false),
-            kuwoQuality = s(KEY_KUWO_QUALITY, "320k") ?: "320k",
             autoUpdateCheck = b(KEY_AUTO_UPDATE, true),
             neteaseQuality = s(KEY_NETEASE_QUALITY, null) ?: "exhigh",
             playerFullscreen = s(KEY_PLAYER_FULLSCREEN, null) ?: "off",
@@ -363,7 +356,6 @@ class SettingsRepository(context: Context) {
             multiAppPlayback = b(KEY_MULTI_APP_PLAYBACK, false),
             startPage = s(KEY_START_PAGE, null) ?: "library",
             startLibrarySection = s(KEY_START_LIBRARY_SECTION, null) ?: "ALL",
-            startStreamingProvider = s(KEY_START_PROVIDER, null) ?: "netease",
         ).also { com.olbyine.music.playback.AudioEffects.update(it) }
     }
 

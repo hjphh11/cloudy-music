@@ -16,7 +16,6 @@ import kotlinx.coroutines.withContext
 class LyricsHub(
     private val library: MusicLibraryRepository,
     private val netease: NeteaseClient,
-    private val kuwo: KuwoClient,
     private val matcher: OnlineLyricsRepository,
     scope: CoroutineScope,
 ) {
@@ -55,21 +54,6 @@ class LyricsHub(
             } ?: LyricsDocument.Empty.copy(trackId = id)
             val resolved = if (document.lines.isEmpty()) {
                 matchFallback(runCatching { netease.song(songId)?.toTrack() }.getOrNull(), id) ?: document
-            } else {
-                document
-            }
-            return resolved.also { onlineCache.put(id, it) }
-        }
-        if (id.startsWith("kw:")) {
-            onlineCache.get(id)?.let { return it }
-            val songId = id.removePrefix("kw:").toLongOrNull() ?: return LyricsDocument.Empty.copy(trackId = id)
-            val document = runCatching { kuwo.lyrics(songId) }.getOrNull()?.let { stored ->
-                withContext(Dispatchers.Default) {
-                    parse(stored.lyrics, stored.wordLyrics, stored.translationLyrics, stored.romanLyrics, id)
-                }
-            } ?: LyricsDocument.Empty.copy(trackId = id)
-            val resolved = if (document.lines.isEmpty()) {
-                matchFallback(runCatching { kuwo.song(songId)?.toTrack() }.getOrNull(), id) ?: document
             } else {
                 document
             }

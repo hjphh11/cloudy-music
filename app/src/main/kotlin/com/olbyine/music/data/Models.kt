@@ -206,7 +206,6 @@ data class UserSettings(
     val neteaseDownloadQuality: String = "exhigh",
     val neteaseDownloadLyrics: Boolean = true,
     val neteaseDownloadCover: Boolean = false,
-    val kuwoQuality: String = "320k",
     val autoUpdateCheck: Boolean = true,
     val neteaseQuality: String = "exhigh",
     val playerFullscreen: String = "off",
@@ -214,7 +213,6 @@ data class UserSettings(
     val multiAppPlayback: Boolean = false,
     val startPage: String = "library",
     val startLibrarySection: String = "ALL",
-    val startStreamingProvider: String = "netease",
 )
 
 object HapticArea {

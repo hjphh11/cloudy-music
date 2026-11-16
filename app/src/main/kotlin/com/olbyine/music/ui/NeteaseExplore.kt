@@ -563,12 +563,6 @@ internal fun NeteaseSongRow(song: NeteaseSong, current: Boolean, onClick: () -> 
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (song.unavailable) {
-            LocalSearchSoundCloud.current?.let { search ->
-                GhostIconButton(Icons.Rounded.TravelExplore, "在 SoundCloud 搜索音源", { search(song.title + " " + song.artists.firstOrNull().orEmpty()) },
-                    size = 40.dp, iconSize = 19.dp, tint = MaterialTheme.colorScheme.primary)
-            }
-        }
         LocalPlayNextTrack.current?.let { next ->
             GhostIconButton(Icons.AutoMirrored.Rounded.PlaylistPlay, "下一首播放", { next(song.toTrack()) }, size = 40.dp, iconSize = 19.dp,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant)

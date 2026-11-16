@@ -1075,16 +1075,11 @@ internal fun ShareSongSheet(
     resolveId: suspend (Track) -> Long?,
     onMessage: (String) -> Unit,
     onDismiss: () -> Unit,
-    soundCloud: com.olbyine.music.data.SoundCloudClient? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val scId = track.id.takeIf { it.startsWith("sc:") }?.removePrefix("sc:")?.toLongOrNull()
-    val songId by produceState<Long?>(null, track.id) { value = if (scId != null) null else runCatching { resolveId(track) }.getOrNull() }
-    val scLink by produceState<String?>(null, scId) {
-        value = scId?.let { id -> runCatching { soundCloud?.trackInfo(id)?.first?.permalink }.getOrNull()?.takeIf { it.startsWith("http") } }
-    }
-    val link = if (scId != null) scLink else songId?.let(client::songLink)
+    val songId by produceState<Long?>(null, track.id) { value = runCatching { resolveId(track) }.getOrNull() }
+    val link = songId?.let(client::songLink)
     val card by produceState<android.graphics.Bitmap?>(null, track.id, link, lyricLine) {
         value = withContext(Dispatchers.IO) { runCatching { ShareCard.render(context, track, lyricLine, link) }.getOrNull() }
     }
@@ -1092,8 +1087,7 @@ internal fun ShareSongSheet(
     var picked by remember { mutableStateOf(false) }
     LaunchedEffect(songId) { if (songId != null && client.signedIn && !picked) mode = ShareMode.FRIENDS }
     val me = client.account.value?.userId
-    val officialText = if (scId != null) scLink?.let { "${track.title} - ${track.artist}  $it" }
-        else songId?.let { id -> "分享${track.artist}的单曲《${track.title}》: https://music.163.com/song?id=$id" + (me?.let { "&userid=$it" } ?: "") + " (来自@网易云音乐)" }
+    val officialText = songId?.let { id -> "分享${track.artist}的单曲《${track.title}》: https://music.163.com/song?id=$id" + (me?.let { "&userid=$it" } ?: "") + " (来自@网易云音乐)" }
     val selected = remember { mutableStateListOf<Long>() }
     var note by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -1168,7 +1162,7 @@ internal fun ShareSongSheet(
                             }, icon = Icons.Rounded.ContentCopy, style = PillStyle.TONAL, height = 40.dp)
                         }
                     }
-                    if (songId == null && scId == null) {
+                    if (songId == null) {
                         Spacer(Modifier.height(8.dp))
                         Text("没有在网易云找到这首歌，卡片里不带收听二维码", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                     }

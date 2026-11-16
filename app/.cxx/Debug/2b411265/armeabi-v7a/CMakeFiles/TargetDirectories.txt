@@ -1,0 +1,3 @@
+D:/zm/cloudy/tools/olbyine/src/app/.cxx/Debug/2b411265/armeabi-v7a/CMakeFiles/olbyineusb.dir
+D:/zm/cloudy/tools/olbyine/src/app/.cxx/Debug/2b411265/armeabi-v7a/CMakeFiles/edit_cache.dir
+D:/zm/cloudy/tools/olbyine/src/app/.cxx/Debug/2b411265/armeabi-v7a/CMakeFiles/rebuild_cache.dir

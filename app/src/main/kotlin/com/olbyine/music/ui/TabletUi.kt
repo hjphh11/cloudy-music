@@ -97,10 +97,7 @@ internal fun TabletSidebar(
     onLibrary: (LibrarySection) -> Unit,
     onPlaylist: (String) -> Unit,
     onDestination: (AppDestination) -> Unit,
-    onWebDav: () -> Unit,
     modifier: Modifier = Modifier,
-    streamingProvider: String = "netease",
-    onStreaming: (String) -> Unit = { onDestination(AppDestination.ONLINE) },
 ) {
     val colors = MaterialTheme.colorScheme
     val dark = colors.background.luminance() < .5f
@@ -144,11 +141,7 @@ internal fun TabletSidebar(
                     RailItem(entry.icon, entry.label, selectedLibrary(entry.key), click { onLibrary(LibrarySection.valueOf(entry.key)) })
                 }
                 Spacer(Modifier.height(6.dp))
-                RailItem(Icons.Rounded.Cloud, "网易云", destination == AppDestination.ONLINE && streamingProvider == "netease", click { onStreaming("netease") })
-                RailItem(Icons.Rounded.QueueMusic, "洛雪", destination == AppDestination.ONLINE && streamingProvider == "kuwo", click { onStreaming("kuwo") })
-                RailItem(Icons.Rounded.Waves, "SoundCloud", destination == AppDestination.ONLINE && streamingProvider == "soundcloud", click { onStreaming("soundcloud") })
-                RailItem(Icons.Rounded.Storage, "Navidrome", destination == AppDestination.ONLINE && streamingProvider == "navidrome", click { onStreaming("navidrome") })
-                RailItem(Icons.Rounded.Dns, "WebDAV", false, click(onWebDav))
+                RailItem(Icons.Rounded.Cloud, "网易云", destination == AppDestination.ONLINE, click { onDestination(AppDestination.ONLINE) })
             }
             RailItem(Icons.Rounded.Settings, "设置", destination == AppDestination.SETTINGS, click { onDestination(AppDestination.SETTINGS) },
                 Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
@@ -165,11 +158,7 @@ internal fun TabletSidebar(
                     SidebarItem(entry.icon, entry.label, selectedLibrary(entry.key), click { onLibrary(LibrarySection.valueOf(entry.key)) })
                 }
                 SidebarLabel("在线")
-                SidebarItem(Icons.Rounded.Cloud, "网易云音乐", destination == AppDestination.ONLINE && streamingProvider == "netease", click { onStreaming("netease") })
-                SidebarItem(Icons.AutoMirrored.Rounded.QueueMusic, "洛雪音乐", destination == AppDestination.ONLINE && streamingProvider == "kuwo", click { onStreaming("kuwo") })
-                SidebarItem(Icons.Rounded.Waves, "SoundCloud", destination == AppDestination.ONLINE && streamingProvider == "soundcloud", click { onStreaming("soundcloud") })
-                SidebarItem(Icons.Rounded.Storage, "Navidrome", destination == AppDestination.ONLINE && streamingProvider == "navidrome", click { onStreaming("navidrome") })
-                SidebarItem(Icons.Rounded.Dns, "WebDAV 与 NAS", false, click(onWebDav))
+                SidebarItem(Icons.Rounded.Cloud, "网易云音乐", destination == AppDestination.ONLINE, click { onDestination(AppDestination.ONLINE) })
                 if (playlists.isNotEmpty()) {
                     SidebarLabel("我的歌单")
                     playlists.forEach { playlist ->

@@ -188,7 +188,6 @@ private fun NeteaseHome(
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.statusBarsPadding().padding(start = 20.dp, top = 18.dp, end = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("网易云音乐", Modifier.weight(1f), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
-            LocalStreamingSwitch.current?.invoke()
         }
         PillTabs(
             NeteaseTab.entries.map { it to it.label },
@@ -601,12 +600,6 @@ private fun NeteasePlaylistPage(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                }
-                if (song.unavailable && !local) {
-                    LocalSearchSoundCloud.current?.let { search ->
-                        GhostIconButton(Icons.Rounded.TravelExplore, "在 SoundCloud 搜索音源", { search(song.title + " " + song.artists.firstOrNull().orEmpty()) },
-                            size = 40.dp, iconSize = 19.dp, tint = MaterialTheme.colorScheme.primary)
                     }
                 }
                 LocalNeteaseComments.current?.let { openComments ->

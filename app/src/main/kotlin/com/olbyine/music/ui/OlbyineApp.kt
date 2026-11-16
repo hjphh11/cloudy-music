@@ -309,9 +309,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
     val onlineReveal by viewModel.onlineReveal.collectAsState()
     val appUpdate by viewModel.appUpdate.collectAsState()
     val neteaseDownloads by viewModel.neteaseDownloads.collectAsState()
-    val kuwoState by viewModel.kuwoState.collectAsState()
     var downloadTarget by remember { mutableStateOf<com.olbyine.music.data.NeteaseSong?>(null) }
-    var scRevealUser by remember { mutableStateOf<com.olbyine.music.data.ScUser?>(null) }
     var playlistPickerFor by remember { mutableStateOf<Track?>(null) }
     val neteaseLike = remember(neteaseState.liked, viewModel) {
         NeteaseLikeActions(
@@ -327,21 +325,10 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
         )
     }
     var queueOpen by remember { mutableStateOf(false) }
-    var webDavOpen by remember { mutableStateOf(false) }
     var commentsFor by remember { mutableStateOf<Pair<Long, String>?>(null) }
-    var scCommentsFor by remember { mutableStateOf<Pair<Long, String>?>(null) }
-    val openScComments: (Long, String) -> Unit = { id, title -> scCommentsFor = id to title }
-    var streamingProvider by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(state.settings.startStreamingProvider) }
     LaunchedEffect(onlineReveal) {
-        val request = onlineReveal ?: return@LaunchedEffect
-        streamingProvider = request.provider
-        viewModel.navigateTo(AppDestination.ONLINE)
-        if (request.provider == "kuwo") viewModel.clearOnlineReveal()
-        if (request.provider == "soundcloud" && request.scTrackId > 0) {
-            scRevealUser = runCatching { viewModel.soundCloud.trackInfo(request.scTrackId).second }.getOrNull()
-        }
+        if (onlineReveal != null) viewModel.navigateTo(AppDestination.ONLINE)
     }
-    var scSearch by remember { mutableStateOf<String?>(null) }
     val touchOrigin = AppTouchOrigin
     val ncmStack = rememberPageStack<NcmRoute>()
     val appScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -351,11 +338,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
         viewModel.collapseNowPlaying()
     }
     val openNeteaseProfile: (Long) -> Unit = { userId -> pushNcm(NcmRoute.Profile(userId)) }
-    val searchSoundCloud: (String) -> Unit = { query ->
-        streamingProvider = "soundcloud"
-        scSearch = query
-        viewModel.navigateTo(AppDestination.ONLINE)
-    }
     val openComments: (Long, String) -> Unit = { id, title -> commentsFor = id to title }
     var shareFor by remember { mutableStateOf<Pair<Track, String?>?>(null) }
     var wikiHistoryOpen by remember { mutableStateOf<Long?>(null) }
@@ -363,7 +345,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
     val scanFolders by viewModel.scanFolders.collectAsState()
     var listenOpen by remember { mutableStateOf(false) }
     val listenTogether by viewModel.listenTogether.collectAsState()
-    var scOpenRequest by remember { mutableStateOf<Any?>(null) }
     val openChat: (com.olbyine.music.data.NeteaseThread) -> Unit = { thread -> pushNcm(NcmRoute.Chat(thread)) }
     val openArtist: (Long?, String) -> Unit = { id, name -> pushNcm(NcmRoute.Artist(id, name)) }
     val openArtistWith: (Long?, String, List<Pair<Long, String>>) -> Unit = { id, name, co ->
@@ -497,7 +478,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
     var dockHeightPx by remember { mutableIntStateOf(0) }
     val overlayMiniMove = remember { androidx.compose.animation.core.Animatable(0f) }
     var overlayHandoff by remember { mutableStateOf(false) }
-    val overlayOnScreen = ncmStack.entries.isNotEmpty() || webDavOpen
+    val overlayOnScreen = ncmStack.entries.isNotEmpty()
     val overlayMiniSuppress = overlayOnScreen || overlayMiniMove.value > 0.002f
     LaunchedEffect(overlayMiniSuppress) {
         if (overlayMiniSuppress) {
@@ -678,7 +659,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                     if (p > 0f) drawRect(Color.Black.copy(alpha = 0.38f * p))
                 },
         ) {
-            CompositionLocalProvider(LocalTrackActions provides trackActions, LocalNeteaseLike provides neteaseLike, LocalGlassPopupHost provides basePopups, LocalOpenWebDav provides { webDavOpen = true }, LocalAppLayout provides appLayout, LocalLyricFeed provides LyricFeed(playerLyrics, playerLyrics.trackId, miniClock, state.settings.lyricTranslation), LocalNeteaseComments provides openComments, LocalScComments provides openScComments, LocalSearchSoundCloud provides searchSoundCloud, LocalNeteaseProfile provides openNeteaseProfile, LocalNeteaseChat provides openChat, LocalNeteaseLinks provides openNeteaseLink, LocalOpenArtist provides openArtist, LocalOpenArtistWith provides openArtistWith, LocalIsPlaying provides { playerState.playback.isPlaying }, LocalPlayerLaunch provides { bounds -> if (sheet.value < 0.001f && !sheet.dragging) launchBounds = bounds }) {
+            CompositionLocalProvider(LocalTrackActions provides trackActions, LocalNeteaseLike provides neteaseLike, LocalGlassPopupHost provides basePopups, LocalAppLayout provides appLayout, LocalLyricFeed provides LyricFeed(playerLyrics, playerLyrics.trackId, miniClock, state.settings.lyricTranslation), LocalNeteaseComments provides openComments, LocalNeteaseProfile provides openNeteaseProfile, LocalNeteaseChat provides openChat, LocalNeteaseLinks provides openNeteaseLink, LocalOpenArtist provides openArtist, LocalOpenArtistWith provides openArtistWith, LocalIsPlaying provides { playerState.playback.isPlaying }, LocalPlayerLaunch provides { bounds -> if (sheet.value < 0.001f && !sheet.dragging) launchBounds = bounds }) {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
                 containerColor = MaterialTheme.colorScheme.background,
@@ -768,39 +749,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             onNeteaseLogin = viewModel::openNeteaseLogin,
                         )
                         AppDestination.ONLINE -> CompositionLocalProvider(
-                            LocalStreamingSwitch provides {
-                                var providerMenu by remember { mutableStateOf(false) }
-                                Box {
-                                    PillButton(
-                                        when (streamingProvider) {
-                                            "soundcloud" -> "SoundCloud"
-                                            "navidrome" -> "Navidrome"
-                                            "kuwo" -> "洛雪音乐"
-                                            else -> "网易云"
-                                        },
-                                        { providerMenu = true },
-                                        icon = Icons.Rounded.SwapHoriz,
-                                        style = PillStyle.TONAL,
-                                        height = 36.dp,
-                                    )
-                                    OlbyineDropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
-                                        listOf(
-                                            "netease" to "网易云音乐",
-                                            "kuwo" to "洛雪音乐",
-                                            "soundcloud" to "SoundCloud",
-                                            "navidrome" to "Navidrome",
-                                        ).forEach { (key, label) ->
-                                            GlassMenuItem(label, {
-                                                providerMenu = false
-                                                if (key != streamingProvider) {
-                                                    haptics.tick(com.olbyine.music.data.HapticArea.MENUS)
-                                                    streamingProvider = key
-                                                }
-                                            }, selected = key == streamingProvider)
-                                        }
-                                    }
-                                }
-                            },
                             LocalPlayNextTrack provides { track -> runPlaybackAction { viewModel.playNext(listOf(track)) } },
                             LocalNeteaseDownload provides { song -> downloadTarget = song },
                             LocalNeteaseDownloadMany provides { songs ->
@@ -809,7 +757,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             },
                             LocalDownloadTrack provides { track -> downloadTarget = neteaseSongOf(track) },
                             LocalNeteaseDownloads provides neteaseDownloads,
-                            LocalSearchSoundCloud provides searchSoundCloud,
                             LocalNcmPush provides pushNcm,
                             LocalCollectionResume provides { key -> collectionResume[key] },
                             LocalResumeCollection provides { key, songs -> runPlaybackAction { viewModel.resumeNeteaseCollection(key, songs) } },
@@ -818,71 +765,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             },
                             LocalActiveCollection provides activeCollection,
                         ) {
-                            AnimatedContent(
-                                targetState = streamingProvider,
-                                transitionSpec = {
-                                    val order = listOf("netease", "kuwo", "soundcloud", "navidrome")
-                                    tabSwitch(if (order.indexOf(targetState) > order.indexOf(initialState)) 1 else -1, tabMaterial, tabReduce)
-                                },
-                                label = "streaming-provider",
-                            ) { provider ->
-                            if (provider == "kuwo") {
-                                KuwoScreen(
-                                    state = kuwoState,
-                                    bottomPadding = scaffoldPadding.calculateBottomPadding(),
-                                    currentTrackId = state.currentTrack?.id,
-                                    isPlaying = state.playback.isPlaying,
-                                    onSearch = viewModel::searchKuwo,
-                                    onSearchPlaylists = viewModel::searchKuwoPlaylists,
-                                    onLoadHot = viewModel::loadKuwoHot,
-                                    onLoadMine = viewModel::loadLxPlaylists,
-                                    onLoadExplore = viewModel::loadKuwoExplore,
-                                    onRecommendSort = viewModel::setKuwoRecommendSort,
-                                    onOpenBoard = viewModel::openKuwoBoard,
-                                    onOpenPlaylist = viewModel::openKuwoPlaylist,
-                                    onOpenMine = viewModel::openLxPlaylist,
-                                    onDeleteMine = viewModel::deleteLxPlaylist,
-                                    onRenameMine = viewModel::renameLxPlaylist,
-                                    onCreateMine = viewModel::createLxPlaylist,
-                                    onImportBytes = { bytes, name -> viewModel.importLxPlaylistFile(bytes, name) },
-                                    onImportText = { text, name -> viewModel.importLxPlaylist(text, name) },
-                                    onExportMine = { id -> viewModel.exportLxPlaylist(id) },
-                                    onAddToMine = { id, songs -> viewModel.addSongsToLxPlaylist(id, songs) },
-                                    onCloseCollection = viewModel::closeKuwoCollection,
-                                    backGestureEnabled = !playerOpen && !state.lyricsVisible,
-                                    onPlay = { songs, index, shuffle -> runPlaybackAction { viewModel.playKuwo(songs, index, shuffle) } },
-                                )
-                            } else if (provider == "navidrome") {
-                                NavidromeScreen(
-                                    client = viewModel.navidrome,
-                                    bottomPadding = scaffoldPadding.calculateBottomPadding(),
-                                    currentTrackId = state.currentTrack?.id,
-                                    isPlaying = state.playback.isPlaying,
-                                    onPlay = { songs, index, shuffle, origin -> runPlaybackAction { viewModel.playNavidrome(songs, index, shuffle, origin) } },
-                                    revealTitle = onlineReveal?.takeIf { it.provider == "navidrome" }?.title,
-                                    revealAlbum = onlineReveal?.takeIf { it.provider == "navidrome" }?.ndAlbum,
-                                    onRevealHandled = viewModel::clearOnlineReveal,
-                                )
-                            } else if (provider == "soundcloud") {
-                                SoundCloudScreen(
-                                    client = viewModel.soundCloud,
-                                    bottomPadding = scaffoldPadding.calculateBottomPadding(),
-                                    currentTrackId = state.currentTrack?.id,
-                                    isPlaying = state.playback.isPlaying,
-                                    searchRequest = scSearch,
-                                    onSearchHandled = { scSearch = null },
-                                    openUser = scOpenRequest as? com.olbyine.music.data.ScUser,
-                                    onOpenUserHandled = { scOpenRequest = null },
-                                    revealUser = scRevealUser,
-                                    revealPlaylist = onlineReveal?.takeIf { it.provider == "soundcloud" }?.scPlaylist,
-                                    revealTrackId = onlineReveal?.takeIf { it.provider == "soundcloud" }?.scTrackId,
-                                    onRevealHandled = {
-                                        scRevealUser = null
-                                        viewModel.clearOnlineReveal()
-                                    },
-                                    onPlay = { tracks, index, shuffle, origin -> runPlaybackAction { viewModel.playSoundCloud(tracks, index, shuffle, origin) } },
-                                )
-                            } else {
                                 NeteaseScreen(
                             state = neteaseState,
                             onlinePlayback = state.settings.neteaseOnline,
@@ -902,8 +784,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             revealSongId = onlineReveal?.takeIf { it.provider == "netease" }?.songId,
                             onRevealHandled = viewModel::clearOnlineReveal,
                         )
-                            }
-                            }
                         }
                         else -> LibraryScreen(
                             state = state,
@@ -981,25 +861,10 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             viewModel.setActivePlaylistId(id)
                         },
                         onDestination = viewModel::navigateTo,
-                        onWebDav = { webDavOpen = true },
-                        streamingProvider = streamingProvider,
-                        onStreaming = { provider -> streamingProvider = provider; viewModel.navigateTo(AppDestination.ONLINE) },
                         modifier = Modifier.width(appLayout.sidebarWidth),
                     )
                 }
             }
-            }
-            CompositionLocalProvider(LocalGlassPopupHost provides basePopups) {
-                WebDavScreen(
-                    visible = webDavOpen,
-                    repository = viewModel.webDav,
-                    importing = state.importing,
-                    importProgress = importProgress,
-                    backEnabled = !playerOpen,
-                    onDismiss = { webDavOpen = false },
-                    onImport = { server, url -> viewModel.importWebDav(server, url) },
-                    onPlay = { server, entries, index -> runPlaybackAction { viewModel.playWebDav(server, entries, index) } },
-                )
             }
             CompositionLocalProvider(
                 LocalTrackActions provides trackActions,
@@ -1121,7 +986,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                     LocalPlayerBackdrop provides playerBackdrop,
                     LocalGlassSource provides playerBackdrop,
                     LocalNeteaseComments provides openComments,
-                    LocalScComments provides openScComments,
                     LocalNeteaseProfile provides openNeteaseProfile,
                     LocalNeteaseLinks provides openNeteaseLink,
                     LocalOpenArtist provides openArtist, LocalOpenArtistWith provides openArtistWith,
@@ -1354,24 +1218,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             )
                         }
                     } else null,
-                    infoPage = if (track != null && (infoShown || infoVisible) && track.id.startsWith("sc:")) {
-                        {
-                            val scId = track.id.removePrefix("sc:").toLongOrNull() ?: 0L
-                            ScTrackInfoPage(
-                                client = viewModel.soundCloud,
-                                trackId = scId,
-                                progress = { (-pager.value).coerceIn(0f, 1f) },
-                                onOpenUser = { user ->
-                                    scOpenRequest = user
-                                    streamingProvider = "soundcloud"
-                                    ncmStack.clear()
-                                    viewModel.collapseNowPlaying()
-                                    viewModel.navigateTo(AppDestination.ONLINE)
-                                },
-                                onComments = { scCommentsFor = scId to track.title },
-                            )
-                        }
-                    } else if (track != null && (infoShown || infoVisible)) {
+                    infoPage = if (track != null && (infoShown || infoVisible)) {
                         {
                             ArtistAlbumPage(
                                 track = track,
@@ -1461,10 +1308,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                                 addToPlaylist = { playlistPickerFor = it },
                                 share = { shareFor = it to null },
                                 comments = { target ->
-                                    when {
-                                        target.id.startsWith("ncm:") -> target.id.removePrefix("ncm:").toLongOrNull()?.let { openComments(it, target.title) }
-                                        target.id.startsWith("sc:") -> target.id.removePrefix("sc:").toLongOrNull()?.let { openScComments(it, target.title) }
-                                    }
+                                    if (target.id.startsWith("ncm:")) target.id.removePrefix("ncm:").toLongOrNull()?.let { openComments(it, target.title) }
                                 },
                                 artist = { target ->
                                     queueOpen = false
@@ -1502,11 +1346,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                 }
             } }
         }
-        scCommentsFor?.let { (id, title) ->
-            ScCommentsSheet(viewModel.soundCloud, id, title, onDismiss = { scCommentsFor = null }, positionMs = {
-                if (playerState.currentTrack?.id == "sc:$id") playerState.playback.estimatedPosition() else 0L
-            })
-        }
         commentsFor?.let { (id, title) ->
             CompositionLocalProvider(
                 LocalNeteaseProfile provides openNeteaseProfile,
@@ -1523,7 +1362,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                 resolveId = viewModel::neteaseSongIdOf,
                 onMessage = viewModel::showMessage,
                 onDismiss = { shareFor = null },
-                soundCloud = viewModel.soundCloud,
             )
         }
         if (folderSheet) {
@@ -1598,34 +1436,9 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
             )
         }
     }
-    LaunchedEffect(playlistPickerFor?.id) {
-        if (playlistPickerFor?.id?.startsWith("kw:") == true) viewModel.loadLxPlaylists()
-    }
     val ncmPickId = playlistPickerFor?.id?.takeIf { it.startsWith("ncm:") }?.removePrefix("ncm:")?.toLongOrNull()
-    val scPickId = playlistPickerFor?.id?.takeIf { it.startsWith("sc:") }?.removePrefix("sc:")?.toLongOrNull()
     val pickContext = LocalContext.current
-    if (scPickId != null) {
-        val scTrack = playlistPickerFor
-        ScPlaylistPicker(
-            client = viewModel.soundCloud,
-            trackId = scPickId,
-            libraryPlaylists = state.playlists,
-            libraryTracks = state.tracks + state.streamedTracks,
-            onDone = { message ->
-                playlistPickerFor = null
-                android.widget.Toast.makeText(pickContext, message, android.widget.Toast.LENGTH_SHORT).show()
-            },
-            onPickLibrary = { id ->
-                playlistPickerFor = null
-                if (scTrack != null) viewModel.addStreamedTrackToLibraryPlaylist(id, scTrack)
-            },
-            onCreateLibrary = { name ->
-                playlistPickerFor = null
-                if (scTrack != null) viewModel.createLibraryPlaylistWithStreamedTrack(name, scTrack)
-            },
-            onDismiss = { playlistPickerFor = null },
-        )
-    } else if (ncmPickId != null) {
+    if (ncmPickId != null) {
         val ncmTrack = playlistPickerFor
         NeteasePlaylistPicker(
             client = viewModel.neteaseClient,
@@ -1639,31 +1452,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
             onCreateLibrary = { name ->
                 playlistPickerFor = null
                 if (ncmTrack != null) viewModel.createLibraryPlaylistWithStreamedTrack(name, ncmTrack)
-            },
-            onDismiss = { playlistPickerFor = null },
-        )
-    } else if (playlistPickerFor?.id?.startsWith("kw:") == true) {
-        val kwTrack = playlistPickerFor!!
-        LxPlaylistPicker(
-            playlists = kuwoState.mine,
-            trackTitle = kwTrack.title,
-            libraryPlaylists = state.playlists,
-            libraryTracks = state.tracks + state.streamedTracks,
-            onAdd = { id ->
-                playlistPickerFor = null
-                viewModel.addTrackToLxPlaylist(id, kwTrack)
-            },
-            onCreate = { name ->
-                playlistPickerFor = null
-                viewModel.createLxPlaylistWithTrack(name, kwTrack)
-            },
-            onPickLibrary = { id ->
-                playlistPickerFor = null
-                viewModel.addStreamedTrackToLibraryPlaylist(id, kwTrack)
-            },
-            onCreateLibrary = { name ->
-                playlistPickerFor = null
-                viewModel.createLibraryPlaylistWithStreamedTrack(name, kwTrack)
             },
             onDismiss = { playlistPickerFor = null },
         )
@@ -1779,12 +1567,6 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
             state = playlistImport,
             onSource = viewModel::selectPlaylistSource,
             onFetch = viewModel::fetchNeteasePlaylist,
-            onSpotifyLogin = { id ->
-                viewModel.spotifyLoginUrl(id)?.let { url ->
-                    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, url)) }
-                }
-            },
-            onSpotifyLogout = viewModel::logoutSpotify,
             onConfirm = viewModel::confirmPlaylistImport,
             onDismiss = viewModel::dismissPlaylistImport,
         )

@@ -432,17 +432,6 @@ private fun AppearancePage(state: MainUiState, viewModel: MainViewModel, onPickB
             exit = fadeOut(tween(OlbyineTokens.Motion.quickMs)) + shrinkVertically(tween(200, easing = OlbyineTokens.Motion.easeOut)),
         ) {
             Column {
-                GroupDivider()
-                ChoiceRow(
-                    Icons.Rounded.Cloud, "默认流媒体", "启动时自动打开哪个流媒体来源",
-                    listOf(
-                        "netease" to "网易云",
-                        "kuwo" to "洛雪",
-                        "soundcloud" to "SoundCloud",
-                        "navidrome" to "Navidrome",
-                    ),
-                    settings.startStreamingProvider, viewModel::setStartStreamingProvider,
-                )
             }
         }
     }
@@ -986,26 +975,6 @@ private fun OnlineSettingsPage(state: MainUiState, viewModel: MainViewModel, onE
             )
         }
     }
-    SettingsGroup("洛雪音乐") {
-        ChoiceRow(
-            Icons.Rounded.HighQuality,
-            "播放音质",
-            "高于曲目可用码率时会自动降级；无损与 Hi-Res 需要自定义源支持，内置直链最高 320k",
-            com.olbyine.music.data.KuwoClient.QUALITIES,
-            settings.kuwoQuality,
-            viewModel::setKuwoQuality,
-        )
-        GroupDivider()
-        LxCustomSourceSection { viewModel.showMessage(it) }
-        GroupDivider()
-        Text(
-            "内置搜索、榜单与歌单走酷我接口；导入洛雪自定义源后，播放地址会优先交给脚本获取，" +
-                "脚本失败才回退到内置直链。选无损 / Hi-Res 时只有脚本声明了对应档位才会真的取到 flac。",
-            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
     SettingsGroup("下载") {
         ChoiceRow(
             Icons.Rounded.FileDownload,
@@ -1108,18 +1077,6 @@ private fun OnlineSettingsPage(state: MainUiState, viewModel: MainViewModel, onE
                     verifying = viewModel.verifyAppleToken()
                 }
             }
-        }
-    }
-    LocalOpenWebDav.current?.let { openWebDav ->
-        val servers by viewModel.webDav.servers.collectAsState()
-        SettingsGroup("WebDAV") {
-            LinkRow(
-                Icons.Rounded.Dns,
-                if (servers.isEmpty()) "WebDAV 网盘与 NAS" else "WebDAV · ${servers.size} 台服务器",
-                if (servers.isEmpty()) "连接 Alist、群晖、Nextcloud、坚果云等，在线播放或导入音乐库"
-                else servers.joinToString("、") { it.name },
-                openWebDav,
-            )
         }
     }
     SettingsGroup("其他播放器") {

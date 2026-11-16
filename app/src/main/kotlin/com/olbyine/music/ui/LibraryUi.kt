@@ -1236,13 +1236,10 @@ private fun AddMenu(
         OlbyineDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             GlassMenuItem("选择音频文件", { expanded = false; onImportAudio() }, icon = Icons.Rounded.AudioFile)
             GlassMenuItem("扫描文件夹", { expanded = false; onImportFolder() }, icon = Icons.Rounded.FolderOpen)
-            LocalOpenWebDav.current?.let { openWebDav ->
-                GlassMenuItem("WebDAV / NAS", { expanded = false; openWebDav() }, icon = Icons.Rounded.Dns)
-            }
             GlassMenuItem("导入同名歌词", { expanded = false; onImportLyrics() }, icon = Icons.Rounded.Lyrics)
             MenuDivider()
             GlassMenuItem("新建歌单", { expanded = false; onCreatePlaylist() }, icon = Icons.AutoMirrored.Rounded.PlaylistAdd)
-            GlassMenuItem("导入网易云 / Spotify 歌单", { expanded = false; onImportNetease() }, icon = Icons.Rounded.CloudDownload)
+            GlassMenuItem("导入网易云歌单", { expanded = false; onImportNetease() }, icon = Icons.Rounded.CloudDownload)
             MenuDivider()
             GlassMenuItem("监听其他播放器", { expanded = false; onExternalLyrics() }, icon = Icons.Rounded.Headphones)
         }
@@ -2289,11 +2286,7 @@ internal fun StreamedPlaylistDialog(
                 }
                 state.items.isEmpty() -> Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
                     Text(
-                        when (state.source) {
-                            StreamedSource.NETEASE -> "登录网易云音乐后可读取你的歌单"
-                            StreamedSource.LX -> "洛雪歌单里还没有内容"
-                            StreamedSource.SOUNDCLOUD -> "登录 SoundCloud 后可读取你的歌单"
-                        },
+                        "登录网易云音乐后可读取你的歌单",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

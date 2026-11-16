@@ -76,7 +76,6 @@ import androidx.compose.ui.unit.dp
 import com.olbyine.music.MetadataMatchUiState
 import com.olbyine.music.PlaylistImportUiState
 import com.olbyine.music.PlaylistSource
-import com.olbyine.music.data.SpotifyRepository
 import com.olbyine.music.data.AlbumInfo
 import com.olbyine.music.data.ArtistInfo
 import com.olbyine.music.data.MetadataCandidate
@@ -568,15 +567,11 @@ internal fun PlaylistImportSheet(
     state: PlaylistImportUiState,
     onSource: (PlaylistSource) -> Unit,
     onFetch: (String) -> Unit,
-    onSpotifyLogin: (clientId: String) -> Unit,
-    onSpotifyLogout: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var input by rememberSaveable(state.source) { mutableStateOf("") }
-    var clientId by rememberSaveable { mutableStateOf(state.spotifyClientId) }
-    val spotify = state.source == PlaylistSource.SPOTIFY
     GlassBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Text("导入歌单", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
@@ -586,37 +581,16 @@ internal fun PlaylistImportSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(10.dp))
-            PillTabs(
-                items = PlaylistSource.entries.map { it to it.label },
-                selected = state.source,
-                onSelect = onSource,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            )
-            Spacer(Modifier.height(12.dp))
-            if (spotify && !state.spotifyConnected) {
-                Text(
-                    "Spotify 需要你自己的开发者应用：在 developer.spotify.com 新建 App，Redirect URI 填 ${SpotifyRepository.REDIRECT_URI}，" +
-                        "API 选 Web API，然后把 Client ID 粘贴到下面。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            OlbyineTextField(input, { input = it }, "网易云歌单链接或 ID")
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton(
+                    if (state.loading) "读取中…" else "读取歌单",
+                    { onFetch(input) },
+                    icon = Icons.Rounded.Search,
+                    style = PillStyle.TONAL,
+                    enabled = !state.loading && input.isNotBlank(),
                 )
-                Spacer(Modifier.height(8.dp))
-                OlbyineTextField(clientId, { clientId = it }, "Client ID")
-                Spacer(Modifier.height(10.dp))
-                PillButton("连接 Spotify", { onSpotifyLogin(clientId) }, icon = Icons.Rounded.Person, enabled = clientId.isNotBlank())
-            } else {
-                OlbyineTextField(input, { input = it }, if (spotify) "Spotify 歌单链接" else "网易云歌单链接或 ID")
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PillButton(
-                        if (state.loading) "读取中…" else "读取歌单",
-                        { onFetch(input) },
-                        icon = Icons.Rounded.Search,
-                        style = PillStyle.TONAL,
-                        enabled = !state.loading && input.isNotBlank(),
-                    )
-                    if (spotify) PillButton("断开 Spotify", onSpotifyLogout, style = PillStyle.OUTLINED)
-                }
             }
             state.message?.let {
                 Text(it, Modifier.padding(top = 10.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -625,7 +599,6 @@ internal fun PlaylistImportSheet(
         val playlist = state.playlist
         val phase = when {
             state.loading -> 0
-            playlist == null && spotify && state.spotifyPlaylists.isNotEmpty() -> 1
             playlist != null -> 2
             else -> 3
         }
@@ -633,24 +606,6 @@ internal fun PlaylistImportSheet(
             Column(Modifier.fillMaxWidth()) {
                 when (shown) {
                     0 -> Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { OlbyineSpinner() }
-                    1 -> {
-                        Overline("我的歌单", Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp))
-                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                            itemsIndexed(state.spotifyPlaylists, key = { index, it -> "$index:${it.id}" }) { _, item ->
-                                Row(
-                                    itemMotion().fillMaxWidth().clickable { onFetch(item.id) }.padding(horizontal = 20.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    UrlImage(item.imageUrl, Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest))
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(item.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("${item.owner} · ${item.trackCount} 首", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                            }
-                        }
-                    }
                     2 -> if (playlist != null) {
                         val found = playlist.songs.count { state.matches.containsKey(it.id) }
                         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {

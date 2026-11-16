@@ -8,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.olbyine.music.data.SpotifyRepository
 import com.olbyine.music.ui.OlbyineApp
 import com.olbyine.music.ui.OlbyineTheme
 
@@ -72,11 +71,6 @@ class MainActivity : ComponentActivity() {
             viewModel.navigateTo(AppDestination.NOW_PLAYING)
             intent.action = Intent.ACTION_MAIN
             return
-        }
-        val data = intent?.data ?: return
-        if (data.toString().startsWith(SpotifyRepository.REDIRECT_URI)) {
-            viewModel.completeSpotifyLogin(data)
-            intent.data = null
         }
     }
 

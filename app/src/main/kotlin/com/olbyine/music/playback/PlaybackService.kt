@@ -187,29 +187,6 @@ class PlaybackService : MediaSessionService() {
                 val headers = app.webDav.headersFor(spec.uri.toString())
                 return@Factory if (headers.isEmpty()) spec else spec.withAdditionalHeaders(headers)
             }
-            if (spec.uri.scheme == "sc") {
-                val id = spec.uri.host?.removePrefix("t")?.toLongOrNull() ?: throw IOException("无效的 SoundCloud 曲目")
-                val path = spec.uri.encodedPath.orEmpty().removePrefix("/")
-                val url = try {
-                    when {
-                        path.isEmpty() -> app.soundCloud.streamUrl(id, hls = false)
-                        path == "playlist.m3u8" -> app.soundCloud.streamUrl(id, hls = true)
-                        else -> app.soundCloud.hlsSegment(id, path + (spec.uri.encodedQuery?.let { "?$it" } ?: ""))
-                    }
-                } catch (error: Exception) {
-                    throw IOException(error.message ?: "SoundCloud 无法播放这首歌", error)
-                }
-                return@Factory spec.withUri(Uri.parse(url))
-            }
-            if (spec.uri.scheme == "kw") {
-                val id = spec.uri.lastPathSegment?.toLongOrNull() ?: throw IOException("无效的歌曲 ID")
-                val url = try {
-                    resolveKuwoUrl(id)
-                } catch (error: Exception) {
-                    throw IOException(error.message ?: "洛雪音乐无法播放这首歌", error)
-                }
-                return@Factory spec.withUri(Uri.parse(url))
-            }
             if (spec.uri.scheme != "ncm") return@Factory spec
             val id = spec.uri.lastPathSegment?.toLongOrNull() ?: throw IOException("无效的网易云歌曲")
             val url = try {
@@ -219,39 +196,6 @@ class PlaybackService : MediaSessionService() {
             }
             spec.withUri(Uri.parse(url))
         }
-    }
-
-    /**
-     * 洛雪自定义源优先：脚本声明了 kw 源就交给脚本取地址，失败再退回内置的酷我直链。
-     */
-    private fun resolveKuwoUrl(id: Long): String {
-        val quality = app.settings.settings.value.kuwoQuality
-        val song = app.kuwo.song(id)
-        val musicInfo = org.json.JSONObject()
-            .put("songmid", id.toString())
-            .put("songId", id)
-            .put("id", id.toString())
-            .put("name", song?.title.orEmpty())
-            .put("singer", song?.artist.orEmpty())
-            .put("albumName", song?.album.orEmpty())
-            .put("interval", if ((song?.durationMs ?: 0L) > 0L) "${song!!.durationMs / 1000}s" else "")
-            .put("source", "kw")
-        val scripts = runCatching { app.lxScripts.enabled() }.getOrDefault(emptyList())
-        scripts.forEach { script ->
-            val info = runCatching {
-                kotlinx.coroutines.runBlocking { app.lxRunner.prepare(script) }
-            }.onFailure { error ->
-                app.lxScripts.markFailed(script.id, error.message ?: "初始化失败")
-            }.getOrNull() ?: return@forEach
-            if (!script.initialized) app.lxScripts.markInitialized(script.id, info)
-            val kw = info.firstOrNull { it.key == "kw" } ?: return@forEach
-            val level = com.olbyine.music.data.KuwoClient.resolveQuality(quality, kw.qualitys) ?: return@forEach
-            val url = runCatching {
-                kotlinx.coroutines.runBlocking { app.lxRunner.musicUrl(script, "kw", level, musicInfo) }
-            }.getOrNull()
-            if (!url.isNullOrBlank()) return url
-        }
-        return app.kuwo.playUrlBlocking(id, quality)
     }
 
     @OptIn(UnstableApi::class)
@@ -514,8 +458,7 @@ class PlaybackService : MediaSessionService() {
                 if (!counted && id != null && heardMs >= needed) {
                     counted = true
                     when {
-                        id.startsWith("nd:") -> app.appScope.launch { runCatching { app.navidrome.scrobble(id.removePrefix("nd:")) } }
-                        !id.startsWith("ncm:") && !id.startsWith("sc:") -> scope.launch { runCatching { app.musicLibrary.recordPlay(id) } }
+                        !id.startsWith("ncm:") -> scope.launch { runCatching { app.musicLibrary.recordPlay(id) } }
                     }
                 }
                 handler.postDelayed(this, 1_000L)
