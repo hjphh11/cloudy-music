@@ -8,8 +8,9 @@ Android 10+ · arm64-v8a / armeabi-v7a · Kotlin + Jetpack Compose · AGPL-3.0
 
 | 渠道 | 地址 |
 | --- | --- |
+| 官网（Vercel） | https://cloudy-music.vercel.app |
 | GitHub Releases | [最新版本](https://github.com/hjphh11/cloudy-music/releases/latest) |
-| 加速下载页 | https://cn-nb1.rains3.com/qingwu/cloudy/index.html |
+| 国内镜像下载页 | https://cn-nb1.rains3.com/qingwu/cloudy/index.html |
 
 - 包名 `com.olbyine.music`，版本 1.0.3（build 203）
 - 签名固定，后续版本可以直接覆盖安装，数据与登录状态不会丢
@@ -77,6 +78,19 @@ Android 10+ · arm64-v8a / armeabi-v7a · Kotlin + Jetpack Compose · AGPL-3.0
 | 图形细节 | Compose `graphicsLayer`、`drawBehind`、`BlendMode.Plus` 做柔光，`withFrameNanos` 驱动唱盘旋转 |
 | 其他库 | ZXing 3.5.3（二维码登录）、网易云信 NIM 10.9.11（私信 / 一起听）、Guava 33.3.1、DocumentFile |
 | 更新分发 | 对象存储上的静态 `version.json` + APK 直链，客户端比对 `versionCode` |
+
+## 官网
+
+`website/` 是官网源码，纯静态（HTML + CSS + 一个 JS 文件），没有构建步骤。
+
+```bash
+cd website
+vercel --prod          # 首次会新建/关联项目
+```
+
+- 页面上的版本号、发布日期、下载地址在运行时从 `version.json`（对象存储）读取，发版只改清单，不用改网页
+- 图标与社交卡片由 `tools/make_web_assets.py` 从应用图标素材生成
+- 站点地址：https://cloudy-music.vercel.app
 
 ## 从源码构建
 

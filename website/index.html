@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cloudy · 把网易云装进一块玻璃</title>
+<meta name="description" content="Cloudy 是基于 Jetpack Compose 重写的网易云音乐 Android 客户端。液态玻璃材质、黑胶唱片播放页、逐字歌词随唱随亮，四个入口走到任何地方。开源，24MB。">
+<meta name="theme-color" content="#07070A">
+<meta name="color-scheme" content="dark">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cloudy · 把网易云装进一块玻璃">
+<meta property="og:description" content="网易云音乐 Android 客户端 · 液态玻璃 · 黑胶播放页 · 逐字歌词">
+<meta property="og:url" content="https://cloudy-music.vercel.app/">
+<meta property="og:site_name" content="Cloudy">
+<meta property="og:image" content="https://cloudy-music.vercel.app/assets/og.png">
+<meta property="og:image:alt" content="Cloudy · 把网易云装进一块玻璃">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="canonical" href="https://cloudy-music.vercel.app/">
+<link rel="icon" href="assets/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<!-- 图标sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-download" viewBox="0 0 24 24">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>
+    </symbol>
+    <symbol id="i-github" viewBox="0 0 24 24">
+      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.1c-3.2.7-3.88-1.36-3.88-1.36-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.41-5.25 5.69.41.36.78 1.06.78 2.14v3.17c0 .3.21.67.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5Z"/>
+    </symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24">
+      <path d="M7 17 17 7"/><path d="M8 7h9v9"/>
+    </symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24">
+      <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+      <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24">
+      <path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="m4 4 5 5"/>
+    </symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24">
+      <path d="M19 20 9 12l10-8v16Z" fill="currentColor" stroke="none"/><path d="M5 5v14"/>
+    </symbol>
+    <symbol id="i-play" viewBox="0 0 24 24">
+      <path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="i-next" viewBox="0 0 24 24">
+      <path d="M5 4l10 8-10 8V4Z" fill="currentColor" stroke="none"/><path d="M19 5v14"/>
+    </symbol>
+    <symbol id="i-list" viewBox="0 0 24 24">
+      <path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="3.5" cy="12" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="3.5" cy="18" r="1" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="i-home" viewBox="0 0 24 24">
+      <path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-7h6v7"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="8" r="4"/>
+    </symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24">
+      <path d="M4 7h8M17 7h3M4 17h3M12 17h8"/><circle cx="14.5" cy="7" r="2.2"/><circle cx="9.5" cy="17" r="2.2"/>
+    </symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24">
+      <path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>
+    </symbol>
+    <symbol id="i-disc" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/>
+    </symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24">
+      <path d="M12 21a9 9 0 1 1 9-9c0 2.5-2 3.5-4 3.5h-1.5A2.5 2.5 0 0 0 13 18c0 1.7-.4 3-1 3Z"/>
+      <circle cx="8" cy="9.5" r="1.2" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="7" r="1.2" fill="currentColor" stroke="none"/>
+      <circle cx="16" cy="9.5" r="1.2" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24">
+      <path d="M4 12v2M8 8v9M12 4v16M16 9v7M20 11v3"/>
+    </symbol>
+    <symbol id="i-android" viewBox="0 0 24 24">
+      <rect x="6.5" y="3.5" width="11" height="17" rx="3.2"/><path d="M10.5 18h3"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="aurora"></div>
+<div class="grain"></div>
+
+<header class="nav" id="nav">
+  <div class="nav-in">
+    <a class="nav-brand" href="#top">
+      <img src="assets/icon-192.png" alt="Cloudy 图标" width="30" height="30">
+      <span>Cloudy</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#glass">液态玻璃</a>
+      <a href="#features">功能</a>
+      <a href="#screens">界面</a>
+      <a href="#changelog">更新</a>
+      <a href="#stack">技术</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="nav-gh" href="https://github.com/hjphh11/cloudy-music" target="_blank" rel="noopener" aria-label="GitHub 仓库">
+        <svg class="i fill"><use href="#i-github"/></svg>
+      </a>
+      <a class="btn btn-primary btn-sm" href="#download">下载</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- Hero -->
+  <section class="wrap hero">
+    <div class="hero-copy">
+      <span class="chip"><svg class="i"><use href="#i-android"/></svg>网易云音乐 · Android</span>
+      <h1>把网易云<span class="grad">装进一块玻璃</span></h1>
+      <p class="lede">基于 Jetpack Compose 重写的网易云音乐客户端。液态玻璃材质、黑胶唱片播放页、逐字歌词随唱随亮，四个入口走到任何地方。</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#download">
+          <svg class="i"><use href="#i-download"/></svg>
+          <span>下载 v<span data-ver>1.0.3</span></span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/hjphh11/cloudy-music" target="_blank" rel="noopener">
+          在 GitHub 上看源码
+          <svg class="i"><use href="#i-arrow"/></svg>
+        </a>
+      </div>
+      <ul class="specs">
+        <li><b>24 MB</b><span>安装包</span></li>
+        <li><b>Android 10+</b><span>系统要求</span></li>
+        <li><b>arm64 / arm32</b><span>架构</span></li>
+        <li><b>AGPL-3.0</b><span>开源许可</span></li>
+      </ul>
+    </div>
+
+    <div class="hero-stage">
+      <div class="hero-glow"></div>
+      <div class="phone">
+        <div class="screen">
+          <div class="notch"></div>
+          <div class="statusbar">
+            <span>9:41</span>
+            <span class="sb-right"><i></i><i></i><i></i><span class="sb-bat"></span></span>
+          </div>
+          <div class="np-top">
+            <svg class="i"><use href="#i-chevron-down"/></svg>
+            <span>正在播放</span>
+            <svg class="i"><use href="#i-more"/></svg>
+          </div>
+          <div class="np-body">
+            <div class="disc"><div class="label"></div></div>
+            <div class="np-meta">
+              <div class="np-title">直到世界终结</div>
+              <div class="np-artist">WANDS · SLAM DUNK</div>
+            </div>
+            <div class="bar"><i style="width:34%"></i></div>
+            <div class="times"><span>1:42</span><span>5:12</span></div>
+            <div class="controls">
+              <svg class="i sm"><use href="#i-shuffle"/></svg>
+              <svg class="i"><use href="#i-prev"/></svg>
+              <button class="play" aria-label="播放"><svg class="i"><use href="#i-play"/></svg></button>
+              <svg class="i"><use href="#i-next"/></svg>
+              <svg class="i sm"><use href="#i-list"/></svg>
+            </div>
+          </div>
+          <div class="dock">
+            <a class="on"><svg class="i"><use href="#i-home"/></svg><em>首页</em></a>
+            <a><svg class="i"><use href="#i-search"/></svg><em>搜索</em></a>
+            <a><svg class="i"><use href="#i-chart"/></svg><em>排行榜</em></a>
+            <a><svg class="i"><use href="#i-user"/></svg><em>我的</em></a>
+          </div>
+        </div>
+      </div>
+      <div class="float-card">
+        <div class="eq"><i></i><i></i><i></i><i></i></div>
+        <div>
+          <b>黑胶唱片</b>
+          <span>一圈 6 秒，暂停停在原地</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 液态玻璃 -->
+  <section class="wrap sec glass-sec" id="glass">
+    <div class="stage reveal" id="stage">
+      <div class="covers" aria-hidden="true">
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+      </div>
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+      <div class="blob b3"></div>
+      <div class="blob b4"></div>
+      <div class="plate" id="plate">
+        <div>
+          <div class="plate-kicker">Material</div>
+          <div class="plate-title">液态玻璃</div>
+          <div class="plate-sub">移动鼠标，看高光跟着走</div>
+        </div>
+      </div>
+      <button class="switch" id="glassToggle" type="button" aria-pressed="true">
+        <span class="sw-track"><i></i></span>
+        <span>液态玻璃</span>
+      </button>
+    </div>
+
+    <div class="glass-copy reveal">
+      <span class="overline">材质</span>
+      <h2>玻璃不是一张贴纸</h2>
+      <p class="lede" style="margin-top:18px">用 AGSL 着色器在 GPU 上实时采样背景、计算折射、叠加色散。卡片边缘会把后面的颜色掰弯一点，手指划过时高光跟着走，厚玻璃的那圈边也真的亮起来。</p>
+      <ul class="ticks">
+        <li><b>实时折射</b>每帧采样底下的内容，按曲面推导偏移量，不是预先烘焙的图片。</li>
+        <li><b>边缘色散</b>红绿蓝三通道拆开算，厚边上会泛出极薄的彩边。</li>
+        <li><b>分层控制代价</b>顶部大卡和搜索框做折射，普通分组卡片只做模糊与高光，一页七八张卡片照样跟手。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 功能 -->
+  <section class="wrap sec" id="features">
+    <div class="sec-head reveal">
+      <span class="overline">功能</span>
+      <h2>六个每天都在用的东西</h2>
+      <p class="lede" style="margin-top:16px">界面沿用 Olbyine 的 Compose 骨架，重新排过层级与动线。下面这些是重做过的部分。</p>
+    </div>
+
+    <div class="grid">
+      <article class="feat reveal">
+        <div class="art"><div class="mini-disc"></div></div>
+        <h3>黑胶唱片播放页</h3>
+        <p>封面转起来，一圈 6 秒。暂停停在原地，切歌归零，盘面收在屏幕内侧留出边距。</p>
+      </article>
+
+      <article class="feat reveal">
+        <div class="art">
+          <div class="lyric-mini">
+            <p>そう願っていた 幾千の夜と</p>
+            <p class="live">世界が終わるまでは</p>
+            <p>離れる事もない</p>
+          </div>
+        </div>
+        <h3>逐字歌词</h3>
+        <p>AMLL 逐字时间轴，唱到哪个字哪个字亮。扫光前沿带一层柔光，光晕跟着走。</p>
+      </article>
+
+      <article class="feat reveal">
+        <div class="art center">
+          <div class="dock-mini">
+            <span class="on"><svg class="i"><use href="#i-home"/></svg></span>
+            <span><svg class="i"><use href="#i-search"/></svg></span>
+            <span><svg class="i"><use href="#i-chart"/></svg></span>
+            <span><svg class="i"><use href="#i-user"/></svg></span>
+          </div>
+        </div>
+        <h3>四个入口</h3>
+        <p>首页、搜索、排行榜、我的。宽屏自动切成侧栏，手机上是一块会呼吸的玻璃底栏。</p>
+      </article>
+
+      <article class="feat reveal">
+        <div class="art"><div class="cal-mini"><u>NOV</u><b>17</b></div></div>
+        <h3>首页一天一屏</h3>
+        <p>台历推荐大卡、私人 FM、播客横滑、排行榜预览，一屏看完今天该听什么。</p>
+      </article>
+
+      <article class="feat reveal">
+        <div class="art">
+          <div class="search-mini">
+            <div class="sf"><svg class="i"><use href="#i-search"/></svg>晴天<span class="caret"></span></div>
+            <div class="tags-mini"><span>热搜</span><span>歌手</span><span>歌单</span></div>
+          </div>
+        </div>
+        <h3>搜索做到底</h3>
+        <p>搜前是热搜双列榜，输入即时联想，结果里关键词高亮，歌手走圆形卡、MV 走 16:9 横卡。</p>
+      </article>
+
+      <article class="feat reveal">
+        <div class="art">
+          <div class="wave">
+            <i style="height:30%"></i><i style="height:64%"></i><i style="height:88%"></i>
+            <i style="height:46%"></i><i style="height:76%"></i><i style="height:34%"></i>
+            <i style="height:58%"></i>
+          </div>
+        </div>
+        <h3>本地音乐保留</h3>
+        <p>扫描本机音频，和在线歌曲进同一个队列，歌单页里本地与云上的一起排。</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- 界面 -->
+  <section class="wrap sec screens" id="screens">
+    <div class="reveal">
+      <span class="overline">界面</span>
+      <h2>看着安静，用起来密</h2>
+      <p class="lede" style="margin-top:18px">字体、间距、圆角都按一套尺度收敛。同一个页面里最多两种卡片高度，图标只用一套线性风格，颜色除了封面不带别的杂色。</p>
+      <ul class="ticks">
+        <li><b>五种风格</b>HyperOS、iOS、Material 三套骨架，深浅与主题色独立切换。</li>
+        <li><b>背景跟着封面走</b>正在播放的封面做高斯模糊铺底，卡片半透明浮在上面。</li>
+        <li><b>设置页能搜</b>顶部搜索框，输「缓存」「歌词」「玻璃」直接跳对应分组。</li>
+      </ul>
+    </div>
+
+    <div>
+      <div class="screen-pair">
+        <div class="phone">
+          <div class="screen">
+            <div class="notch"></div>
+            <div class="statusbar">
+              <span>9:41</span>
+              <span class="sb-right"><i></i><i></i><i></i><span class="sb-bat"></span></span>
+            </div>
+            <div class="home-head">
+              <div class="home-hi">晚上好</div>
+              <div class="home-title">今天听什么</div>
+            </div>
+            <div class="daily">
+              <div class="cal"><u>NOV</u><b>17</b></div>
+              <div class="daily-txt"><b>每日推荐</b><span>按你的口味挑的 30 首</span></div>
+            </div>
+            <div class="row-2">
+              <div class="tile"><em>私人 FM</em><b>一直播下去</b><span>没听过但会喜欢</span></div>
+              <div class="tile"><em>播客</em><b>深夜电台</b><span>12 档新更新</span></div>
+            </div>
+            <div class="cover-row"><i class="cv"></i><i class="cv"></i><i class="cv"></i></div>
+            
+            <div class="rank">
+              <div class="rk"><em>1</em><span>晴天</span><u>周杰伦</u></div>
+              <div class="rk"><em>2</em><span>世界が終わるまでは</span><u>WANDS</u></div>
+              <div class="rk"><em>3</em><span>反方向的钟</span><u>周杰伦</u></div>
+            </div>
+            <div class="dock">
+              <a class="on"><svg class="i"><use href="#i-home"/></svg><em>首页</em></a>
+              <a><svg class="i"><use href="#i-search"/></svg><em>搜索</em></a>
+              <a><svg class="i"><use href="#i-chart"/></svg><em>排行榜</em></a>
+              <a><svg class="i"><use href="#i-user"/></svg><em>我的</em></a>
+            </div>
+          </div>
+        </div>
+
+        <div class="phone">
+          <div class="screen">
+            <div class="notch"></div>
+            <div class="statusbar">
+              <span>9:41</span>
+              <span class="sb-right"><i></i><i></i><i></i><span class="sb-bat"></span></span>
+            </div>
+            <div class="set-head">
+              <div class="set-title">设置</div>
+              <div class="set-sub">iOS 风格 · 深色 · 1.0.3</div>
+            </div>
+            <div class="set-group">
+              <div class="set-label">外观与风格</div>
+              <div class="set-card">
+                <div class="set-row"><span class="ico"><svg class="i"><use href="#i-layers"/></svg></span><span>液态玻璃</span><i class="tg"></i></div>
+                <div class="set-row"><span class="ico v"><svg class="i"><use href="#i-palette"/></svg></span><span>主题色</span><u>珊瑚红</u></div>
+                <div class="set-row"><span class="ico t"><svg class="i"><use href="#i-disc"/></svg></span><span>黑胶唱片</span><i class="tg"></i></div>
+              </div>
+            </div>
+            <div class="set-group">
+              <div class="set-label">播放</div>
+              <div class="set-card">
+                <div class="set-row"><span class="ico v"><svg class="i"><use href="#i-wave"/></svg></span><span>流媒体音质</span><u>极高</u></div>
+                <div class="set-row"><span class="ico"><svg class="i"><use href="#i-download"/></svg></span><span>播完自动缓存</span><i class="tg off"></i></div>
+              </div>
+            </div>
+            <div class="set-group">
+              <div class="set-label">关于</div>
+              <div class="set-card">
+                <div class="set-row"><span class="ico t"><svg class="i"><use href="#i-sliders"/></svg></span><span>检查更新</span><u>1.0.3</u></div>
+              </div>
+            </div>
+            <div class="dock">
+              <a><svg class="i"><use href="#i-home"/></svg><em>首页</em></a>
+              <a><svg class="i"><use href="#i-search"/></svg><em>搜索</em></a>
+              <a><svg class="i"><use href="#i-chart"/></svg><em>排行榜</em></a>
+              <a class="on"><svg class="i"><use href="#i-user"/></svg><em>我的</em></a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="screen-cap"><span class="cap-two">左：首页　右：设置</span><span class="cap-one">设置页 · 打开液态玻璃后的样子</span></p>
+    </div>
+  </section>
+
+  <!-- 更新日志 -->
+  <section class="wrap sec" id="changelog">
+    <div class="sec-head reveal">
+      <span class="overline">更新</span>
+      <h2>每版都动到能摸到的地方</h2>
+    </div>
+
+    <div class="log">
+      <div class="log-item latest reveal">
+        <div class="log-meta">
+          <div class="log-ver">1.0.3 <em>最新</em></div>
+          <span class="log-date">2026-11-16</span>
+        </div>
+        <div class="log-body">
+          <ul>
+            <li><b>设置页重做</b>大标题加状态摘要、分组带色条、留白重新排过，一眼扫到想找的那一项。</li>
+            <li><b>卡片变成真玻璃</b>打开液态玻璃后，设置卡片和搜索框对底下那层色斑做模糊与折射，边缘高光能看见。</li>
+            <li><b>「材质」组往前挪</b>进外观页上半部分就能开关，不用翻到底。</li>
+            <li><b>状态改胶囊标签</b>「标准」「iOS」这类裸文字换成小胶囊，行尾更齐。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="log-item reveal">
+        <div class="log-meta">
+          <div class="log-ver">1.0.2</div>
+          <span class="log-date">2026-11-16</span>
+        </div>
+        <div class="log-body">
+          <ul>
+            <li><b>更新检查换成自己的</b>不再提示上游 Olbyine 的 1.4.0，改读 Cloudy 自己的版本清单。</li>
+            <li><b>不再反复打扰</b>点过「稍后」的版本，之后启动不再弹，只在更高版本出现时提醒。</li>
+            <li><b>升级说明排版修复</b>不再把 <code>##</code>、<code>-</code> 这类 Markdown 符号原样显示。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="log-item reveal">
+        <div class="log-meta">
+          <div class="log-ver">1.0.1</div>
+          <span class="log-date">2026-11-16</span>
+        </div>
+        <div class="log-body">
+          <ul>
+            <li><b>黑胶转速放慢</b>从 33⅓ 转/分的真实转速改成 6 秒一圈，屏幕上不晃眼。</li>
+            <li><b>盘面收小一圈</b>留出边距，不再撑满整屏。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="log-item reveal">
+        <div class="log-meta">
+          <div class="log-ver">1.0.0</div>
+          <span class="log-date">2026-11-16</span>
+        </div>
+        <div class="log-body">
+          <ul>
+            <li><b>改名 Cloudy</b>五套配色自适应图标，启动器主题图标一起适配。</li>
+            <li><b>四入口导航</b>首页、搜索、排行榜、我的，平板自动切侧栏。</li>
+            <li><b>首页与搜索重做</b>台历推荐大卡、私人 FM、热搜双列榜、关键词高亮。</li>
+            <li><b>黑胶唱片与唱字微光</b>播放页转起来，歌词逐字亮起来。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 下载 -->
+  <section class="wrap sec" id="download">
+    <div class="dl-card reveal">
+      <div>
+        <div class="dl-head">
+          <img src="assets/icon-192.png" alt="Cloudy" width="56" height="56">
+          <div>
+            <div class="dl-ver">Cloudy <span data-ver>1.0.3</span> <em>Build <span data-build>203</span></em></div>
+            <div class="dl-meta"><span data-date>2026-11-16</span> 发布 · Android 10 及更高版本 · arm64 / arm32</div>
+          </div>
+        </div>
+        <div class="dl-actions">
+          <a class="btn btn-primary" id="dlApk" href="https://cn-nb1.rains3.com/qingwu/cloudy/cloudy-1.0.3-release.apk" rel="noopener">
+            <svg class="i"><use href="#i-download"/></svg>
+            下载安装包 · 24 MB
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/hjphh11/cloudy-music/releases/latest" target="_blank" rel="noopener">
+            GitHub Release
+            <svg class="i"><use href="#i-arrow"/></svg>
+          </a>
+        </div>
+        <p class="dl-notes">
+          <b>签名固定，可直接覆盖安装</b>，账号、歌单、设置都不会丢。<br>
+          微信或 QQ 里点开可能被拦，右上角「⋯」选在浏览器打开。<br>
+          安装时提示「未知来源」是正常的，允许本次安装即可。
+        </p>
+      </div>
+      <div class="qr-box">
+        <img src="assets/qr.png" alt="官网二维码" width="156" height="156">
+        <span>扫码在手机上打开</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 技术 -->
+  <section class="wrap sec" id="stack">
+    <div class="sec-head reveal">
+      <span class="overline">技术</span>
+      <h2>用了什么</h2>
+      <p class="lede" style="margin-top:16px">从上游 Olbyine 剥出来，只保留网易云一条线。界面没有重写，改的是布局、视觉层级和导航结构。</p>
+    </div>
+
+    <div class="stack reveal">
+      <div class="stack-row">
+        <div class="stack-key">语言与构建</div>
+        <div class="pills">
+          <span class="pill"><b>Kotlin</b> 2.0.20</span>
+          <span class="pill">Gradle 8.10.2</span>
+          <span class="pill">AGP 8.6.1</span>
+          <span class="pill">JDK 17</span>
+          <span class="pill">minSdk 29 · target 36</span>
+        </div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-key">界面</div>
+        <div class="pills">
+          <span class="pill hot"><b>AGSL RuntimeShader</b> 液态玻璃</span>
+          <span class="pill">Jetpack Compose</span>
+          <span class="pill">Material 3</span>
+          <span class="pill">自研 AMLL 逐字歌词</span>
+        </div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-key">播放</div>
+        <div class="pills">
+          <span class="pill"><b>Media3</b> 1.10.1</span>
+          <span class="pill">ExoPlayer</span>
+          <span class="pill">自研 ALAC 解码</span>
+          <span class="pill">CMake + NDK 26.3</span>
+          <span class="pill">USB 音频独占</span>
+        </div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-key">数据与接口</div>
+        <div class="pills">
+          <span class="pill">网易云 weapi / eapi</span>
+          <span class="pill">OkHttp</span>
+          <span class="pill">kotlinx.serialization</span>
+          <span class="pill">ZXing</span>
+          <span class="pill">云信 NIM</span>
+        </div>
+      </div>
+      <div class="stack-row">
+        <div class="stack-key">分发</div>
+        <div class="pills">
+          <span class="pill">Maven Central</span>
+          <span class="pill">自建版本清单</span>
+          <span class="pill">对象存储镜像</span>
+          <span class="pill hot">AGPL-3.0</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-in">
+      <div class="foot-brand">
+        <img src="assets/icon-192.png" alt="" width="36" height="36">
+        <div>
+          <b>Cloudy</b>
+          <span>网易云音乐 Android 客户端</span>
+        </div>
+      </div>
+      <div class="foot-links">
+        <a href="https://github.com/hjphh11/cloudy-music" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/hjphh11/cloudy-music/releases" target="_blank" rel="noopener">全部版本</a>
+        <a href="https://cn-nb1.rains3.com/qingwu/cloudy/index.html" target="_blank" rel="noopener">镜像下载页</a>
+        <a href="#top">回到顶部</a>
+      </div>
+    </div>
+    <p class="foot-legal">
+      基于 <a href="https://github.com/Huliang2597/olbyine-music" target="_blank" rel="noopener" style="color:var(--fg-3)">Olbyine</a> 二次开发，遵循 AGPL-3.0 分发。本项目不提供任何音频内容，所有歌曲、封面与歌词均来自网易云音乐，版权归原权利人所有。<br>
+      包名 <code>com.olbyine.music</code> · 与 Olbyine 原版同签名，可覆盖升级 · © 2026 Cloudy
+    </p>
+  </div>
+</footer>
+
+<script src="assets/site.js"></script>
+</body>
+</html>
