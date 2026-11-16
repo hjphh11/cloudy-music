@@ -1059,7 +1059,7 @@ private fun PlayerArtwork(
                         shared.bounds = page.localBoundingBoxOf(coordinates, clipBounds = false)
                     }
                 }
-                .size(size)
+                .size(if (vinyl) size * VINYL_SCALE else size)
                 .graphicsLayer {
                     val s = scaleState.value
                     scaleX = s
@@ -1101,9 +1101,15 @@ private fun PlayerArtwork(
     }
 }
 
+/** 唱盘角速度（度/秒）。33⅓ 转/分＝200°/s 在手机屏上转得太急，放慢到约 6 秒一圈。 */
+private const val VINYL_DEG_PER_SEC = 60f
+
+/** 黑胶盘直径相对封面尺寸的收缩比，圆盘撑满整宽会显得压迫。 */
+private const val VINYL_SCALE = .82f
+
 /**
- * 黑胶盘面。转速按 33⅓ 转/分折算（约 200°/s），暂停时停在当前角度，
- * 换歌归零，这样用户能看出「这张唱片转了多久」。
+ * 黑胶盘面。约 6 秒一圈，暂停时停在当前角度，换歌归零，
+ * 这样用户能看出「这张唱片转了多久」。
  */
 @Composable
 private fun rememberVinylSpin(active: Boolean, key: Any?): androidx.compose.runtime.State<Float> {
@@ -1116,7 +1122,7 @@ private fun rememberVinylSpin(active: Boolean, key: Any?): androidx.compose.runt
             withFrameNanos { now ->
                 val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, .12f)
                 last = now
-                angle.floatValue = (angle.floatValue + dt * 200f) % 360f
+                angle.floatValue = (angle.floatValue + dt * VINYL_DEG_PER_SEC) % 360f
             }
         }
     }
@@ -1166,14 +1172,14 @@ private fun VinylDisc(angle: androidx.compose.runtime.State<Float>, cover: @Comp
         )
         // 唱片封面（圆）
         Box(
-            Modifier.fillMaxSize(.615f).align(Alignment.Center).clip(CircleShape)
+            Modifier.fillMaxSize(.64f).align(Alignment.Center).clip(CircleShape)
                 .border(1.dp, Color.Black.copy(alpha = .5f), CircleShape),
         ) {
             Box(Modifier.fillMaxSize().graphicsLayer { rotationZ = angle.value }) { cover() }
         }
         // 中心轴孔
         Box(
-            Modifier.align(Alignment.Center).size(9.dp).clip(CircleShape)
+            Modifier.align(Alignment.Center).size(7.dp).clip(CircleShape)
                 .background(Color(0xFF0A0A0C))
                 .border(.8.dp, Color.White.copy(alpha = .18f), CircleShape),
         )
