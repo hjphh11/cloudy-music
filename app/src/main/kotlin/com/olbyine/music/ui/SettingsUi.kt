@@ -403,7 +403,7 @@ private fun AppearancePage(state: MainUiState, viewModel: MainViewModel, onPickB
     SettingsGroup("启动") {
         ChoiceRow(
             Icons.Rounded.Home, "默认启动页", "打开应用时先进入的页面",
-            listOf("library" to "音乐库", "streaming" to "流媒体"), settings.startPage, viewModel::setStartPage,
+            listOf("home" to "首页", "library" to "本地音乐"), settings.startPage, viewModel::setStartPage,
         )
         androidx.compose.animation.AnimatedVisibility(
             visible = settings.startPage == "library",
@@ -424,14 +424,6 @@ private fun AppearancePage(state: MainUiState, viewModel: MainViewModel, onPickB
                     ),
                     settings.startLibrarySection, viewModel::setStartLibrarySection,
                 )
-            }
-        }
-        androidx.compose.animation.AnimatedVisibility(
-            visible = settings.startPage == "streaming",
-            enter = fadeIn(tween(OlbyineTokens.Motion.standardMs)) + expandVertically(tween(240, easing = OlbyineTokens.Motion.easeOut)),
-            exit = fadeOut(tween(OlbyineTokens.Motion.quickMs)) + shrinkVertically(tween(200, easing = OlbyineTokens.Motion.easeOut)),
-        ) {
-            Column {
             }
         }
     }

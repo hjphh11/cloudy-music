@@ -67,6 +67,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.TrendingUp
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -116,6 +124,7 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -327,7 +336,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
     var queueOpen by remember { mutableStateOf(false) }
     var commentsFor by remember { mutableStateOf<Pair<Long, String>?>(null) }
     LaunchedEffect(onlineReveal) {
-        if (onlineReveal != null) viewModel.navigateTo(AppDestination.ONLINE)
+        if (onlineReveal != null) viewModel.navigateTo(AppDestination.HOME)
     }
     val touchOrigin = AppTouchOrigin
     val ncmStack = rememberPageStack<NcmRoute>()
@@ -729,8 +738,8 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                     targetState = baseDestination,
                     modifier = Modifier.fillMaxSize().padding(start = appLayout.sidebarWidth),
                     transitionSpec = {
-                        val from = DockTabs.indexOfFirst { it.destination == initialState }
-                        val to = DockTabs.indexOfFirst { it.destination == targetState }
+                        val from = dockIndex(DockTabs, initialState)
+                        val to = dockIndex(DockTabs, targetState)
                         tabSwitch(if (to >= from) 1 else -1, tabMaterial, tabReduce)
                     },
                     label = "base-page",
@@ -748,7 +757,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             onExternalLyrics = openListening,
                             onNeteaseLogin = viewModel::openNeteaseLogin,
                         )
-                        AppDestination.ONLINE -> CompositionLocalProvider(
+                        AppDestination.HOME, AppDestination.SEARCH, AppDestination.CHARTS, AppDestination.MINE -> CompositionLocalProvider(
                             LocalPlayNextTrack provides { track -> runPlaybackAction { viewModel.playNext(listOf(track)) } },
                             LocalNeteaseDownload provides { song -> downloadTarget = song },
                             LocalNeteaseDownloadMany provides { songs ->
@@ -767,6 +776,16 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                         ) {
                                 NeteaseScreen(
                             state = neteaseState,
+                            initialTab = when (destination) {
+                                AppDestination.SEARCH -> NeteaseTab.SEARCH
+                                AppDestination.CHARTS -> NeteaseTab.CHARTS
+                                AppDestination.MINE -> NeteaseTab.MINE
+                                else -> NeteaseTab.DISCOVER
+                            },
+                            onOpenLibrary = {
+                                viewModel.navigateTo(AppDestination.LIBRARY)
+                            },
+                            onOpenSettings = { viewModel.navigateTo(AppDestination.SETTINGS) },
                             onlinePlayback = state.settings.neteaseOnline,
                             bottomContentPadding = scaffoldPadding.calculateBottomPadding(),
                             currentTrackId = state.currentTrack?.id,
@@ -785,7 +804,10 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             onRevealHandled = viewModel::clearOnlineReveal,
                         )
                         }
-                        else -> LibraryScreen(
+                        else -> {
+                            // 本地音乐是「我的」下的子页，系统返回键退回「我的」。
+                            BackHandler(enabled = true) { viewModel.navigateTo(AppDestination.MINE) }
+                            LibraryScreen(
                             state = state,
                             albums = albums,
                             importProgress = importProgress,
@@ -830,6 +852,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
                             nav = libraryNav,
                             onAlbumStyle = viewModel::setAlbumStyle,
                         )
+                        }
                     }
                     }
                 }
@@ -1900,9 +1923,18 @@ internal val MiniCorner = 22.dp
 internal val MiniHeight = 58.dp
 internal val MiniArtSize = 42.dp
 internal val MiniArtInset = 8.dp
-private val TabWidth = 92.dp
+private val TabMaxWidth = 92.dp
+private val TabMinWidth = 64.dp
 private val TabBarHeight = 62.dp
 private val TabBarPadding = 5.dp
+
+/** 浮动玻璃药丸在窄屏上需要让 4 个入口挤进一屏，按屏宽动态算每格宽度。 */
+@Composable
+private fun dockTabWidth(count: Int): Dp {
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val available = (screenWidth - 26.dp - TabBarPadding * 2) / count
+    return available.coerceIn(TabMinWidth, TabMaxWidth)
+}
 
 private data class DockTab(
     val destination: AppDestination,
@@ -1912,10 +1944,22 @@ private data class DockTab(
 )
 
 private val DockTabs = listOf(
-    DockTab(AppDestination.LIBRARY, "音乐库", Icons.Outlined.LibraryMusic, Icons.Rounded.LibraryMusic),
-    DockTab(AppDestination.ONLINE, "流媒体", Icons.Outlined.Cloud, Icons.Rounded.Cloud),
-    DockTab(AppDestination.SETTINGS, "设置", Icons.Outlined.Settings, Icons.Rounded.Settings),
+    DockTab(AppDestination.HOME, "首页", Icons.Outlined.Home, Icons.Rounded.Home),
+    DockTab(AppDestination.SEARCH, "搜索", Icons.Outlined.Search, Icons.Rounded.Search),
+    DockTab(AppDestination.CHARTS, "排行榜", Icons.Outlined.TrendingUp, Icons.Rounded.TrendingUp),
+    DockTab(AppDestination.MINE, "我的", Icons.Outlined.Person, Icons.Rounded.Person),
 )
+
+/** 本地音乐 / 设置 是「我的」下的子页，指示器跟随「我的」，避免停在错误入口。 */
+private fun dockIndex(tabs: List<DockTab>, destination: AppDestination): Int {
+    val direct = tabs.indexOfFirst { it.destination == destination }
+    if (direct >= 0) return direct
+    val alias = when (destination) {
+        AppDestination.LIBRARY, AppDestination.SETTINGS, AppDestination.NOW_PLAYING -> AppDestination.MINE
+        else -> null
+    } ?: return 0
+    return tabs.indexOfFirst { it.destination == alias }.coerceAtLeast(0)
+}
 
 @Composable
 private fun LiquidTabBar(
@@ -1929,10 +1973,11 @@ private fun LiquidTabBar(
     val density = LocalDensity.current
     val haptics = rememberHaptics()
     val scope = rememberCoroutineScope()
-    val tabWidthPx = with(density) { TabWidth.toPx() }
+    val tabWidth = dockTabWidth(tabs.size)
+    val tabWidthPx = with(density) { tabWidth.toPx() }
     val paddingPx = with(density) { TabBarPadding.toPx() }
     val maxX = tabWidthPx * (tabs.size - 1)
-    val selectedIndex = tabs.indexOfFirst { it.destination == selected }.coerceAtLeast(0)
+    val selectedIndex = dockIndex(tabs, selected)
     val indicatorX = remember { androidx.compose.animation.core.Animatable(selectedIndex * tabWidthPx) }
     val press = remember { androidx.compose.animation.core.Animatable(0f) }
     var velocity by remember { mutableStateOf(0f) }
@@ -1958,7 +2003,7 @@ private fun LiquidTabBar(
 
     Box(
         Modifier
-            .width(TabWidth * tabs.size + TabBarPadding * 2)
+            .width(tabWidth * tabs.size + TabBarPadding * 2)
             .height(TabBarHeight)
             .glass(source, barStyle)
             .pointerInput(tabs.size, tabWidthPx) {
@@ -2015,11 +2060,11 @@ private fun LiquidTabBar(
             }
             .padding(TabBarPadding),
     ) {
-        TabRowContent(tabs, accent = true, modifier = Modifier.matchParentSize().hiddenBackdropSource(accentSource))
-        TabRowContent(tabs, accent = false, modifier = Modifier.matchParentSize())
+        TabRowContent(tabs, accent = true, tabWidth = tabWidth, modifier = Modifier.matchParentSize().hiddenBackdropSource(accentSource))
+        TabRowContent(tabs, accent = false, tabWidth = tabWidth, modifier = Modifier.matchParentSize())
         Box(
             Modifier
-                .width(TabWidth)
+                .width(tabWidth)
                 .fillMaxHeight()
                 .graphicsLayer {
                     translationX = indicatorX.value
@@ -2035,11 +2080,11 @@ private fun LiquidTabBar(
 }
 
 @Composable
-private fun TabRowContent(tabs: List<DockTab>, accent: Boolean, modifier: Modifier) {
+private fun TabRowContent(tabs: List<DockTab>, accent: Boolean, tabWidth: Dp, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         tabs.forEach { tab ->
             Column(
-                Modifier.width(TabWidth).fillMaxHeight(),
+                Modifier.width(tabWidth).fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {

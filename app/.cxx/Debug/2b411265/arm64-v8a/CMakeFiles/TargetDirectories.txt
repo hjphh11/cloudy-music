@@ -1,3 +1,0 @@
-D:/zm/cloudy/tools/olbyine/src/app/.cxx/Debug/2b411265/arm64-v8a/CMakeFiles/olbyineusb.dir
-D:/zm/cloudy/tools/olbyine/src/app/.cxx/Debug/2b411265/arm64-v8a/CMakeFiles/edit_cache.dir
-D:/zm/cloudy/tools/olbyine/src/app/.cxx/Debug/2b411265/arm64-v8a/CMakeFiles/rebuild_cache.dir

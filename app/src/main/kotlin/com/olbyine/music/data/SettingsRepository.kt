@@ -354,7 +354,7 @@ class SettingsRepository(context: Context) {
             playerFullscreen = s(KEY_PLAYER_FULLSCREEN, null) ?: "off",
             keepScreenOn = b(KEY_KEEP_SCREEN_ON, false),
             multiAppPlayback = b(KEY_MULTI_APP_PLAYBACK, false),
-            startPage = s(KEY_START_PAGE, null) ?: "library",
+            startPage = s(KEY_START_PAGE, null) ?: "home",
             startLibrarySection = s(KEY_START_LIBRARY_SECTION, null) ?: "ALL",
         ).also { com.olbyine.music.playback.AudioEffects.update(it) }
     }

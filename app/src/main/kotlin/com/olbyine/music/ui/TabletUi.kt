@@ -22,16 +22,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
-import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.QueueMusic
-import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Storage
-import androidx.compose.material.icons.rounded.Waves
+import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -85,6 +85,15 @@ internal val LocalAppLayout = compositionLocalOf { AppLayout.Phone }
 
 private data class SidebarEntry(val key: String, val label: String, val icon: ImageVector)
 
+private data class NavEntry(val destination: AppDestination, val label: String, val icon: ImageVector)
+
+private val PrimaryNav = listOf(
+    NavEntry(AppDestination.HOME, "首页", Icons.Rounded.Home),
+    NavEntry(AppDestination.SEARCH, "搜索", Icons.Rounded.Search),
+    NavEntry(AppDestination.CHARTS, "排行榜", Icons.Rounded.TrendingUp),
+    NavEntry(AppDestination.MINE, "我的", Icons.Rounded.Person),
+)
+
 @Composable
 internal fun TabletSidebar(
     layout: AppLayout,
@@ -137,11 +146,13 @@ internal fun TabletSidebar(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                PrimaryNav.forEach { entry ->
+                    RailItem(entry.icon, entry.label, destination == entry.destination, click { onDestination(entry.destination) })
+                }
+                Spacer(Modifier.height(6.dp))
                 library.forEach { entry ->
                     RailItem(entry.icon, entry.label, selectedLibrary(entry.key), click { onLibrary(LibrarySection.valueOf(entry.key)) })
                 }
-                Spacer(Modifier.height(6.dp))
-                RailItem(Icons.Rounded.Cloud, "网易云", destination == AppDestination.ONLINE, click { onDestination(AppDestination.ONLINE) })
             }
             RailItem(Icons.Rounded.Settings, "设置", destination == AppDestination.SETTINGS, click { onDestination(AppDestination.SETTINGS) },
                 Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
@@ -153,12 +164,13 @@ internal fun TabletSidebar(
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                 )
+                PrimaryNav.forEach { entry ->
+                    SidebarItem(entry.icon, entry.label, destination == entry.destination, click { onDestination(entry.destination) })
+                }
                 SidebarLabel("资料库")
                 library.forEach { entry ->
                     SidebarItem(entry.icon, entry.label, selectedLibrary(entry.key), click { onLibrary(LibrarySection.valueOf(entry.key)) })
                 }
-                SidebarLabel("在线")
-                SidebarItem(Icons.Rounded.Cloud, "网易云音乐", destination == AppDestination.ONLINE, click { onDestination(AppDestination.ONLINE) })
                 if (playlists.isNotEmpty()) {
                     SidebarLabel("我的歌单")
                     playlists.forEach { playlist ->

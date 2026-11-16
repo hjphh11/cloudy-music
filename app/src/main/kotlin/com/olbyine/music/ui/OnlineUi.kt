@@ -47,8 +47,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
@@ -58,6 +60,8 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.LibraryAdd
+import androidx.compose.material.icons.rounded.Mail
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Refresh
@@ -111,6 +115,9 @@ private val NeteaseRed = Color(0xFFE5303C)
 @Composable
 internal fun NeteaseScreen(
     state: NeteaseUiState,
+    initialTab: NeteaseTab = NeteaseTab.DISCOVER,
+    onOpenLibrary: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onlinePlayback: Boolean,
     bottomContentPadding: Dp,
     currentTrackId: String?,
@@ -148,7 +155,7 @@ internal fun NeteaseScreen(
         pages,
         backEnabled = !pages.isEmpty,
         onBack = goBack,
-        base = { NeteaseHome(state, onlinePlayback, bottomContentPadding, currentTrackId, client, onLogin, onRefresh, onOpenPlaylist, onPlay, onOnlinePlayback, onSignOut) },
+        base = { NeteaseHome(state, initialTab, onOpenLibrary, onOpenSettings, onlinePlayback, bottomContentPadding, currentTrackId, client, onLogin, onRefresh, onOpenPlaylist, onPlay, onOnlinePlayback, onSignOut) },
     ) { playlist ->
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}) {
             NeteasePlaylistPage(
@@ -172,6 +179,9 @@ internal fun NeteaseScreen(
 @Composable
 private fun NeteaseHome(
     state: NeteaseUiState,
+    initialTab: NeteaseTab,
+    onOpenLibrary: () -> Unit,
+    onOpenSettings: () -> Unit,
     onlinePlayback: Boolean,
     bottomContentPadding: Dp,
     currentTrackId: String?,
@@ -183,18 +193,27 @@ private fun NeteaseHome(
     onOnlinePlayback: (Boolean) -> Unit,
     onSignOut: () -> Unit,
 ) {
-    var tab by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(NeteaseTab.MINE) }
+    var tab by androidx.compose.runtime.saveable.rememberSaveable(initialTab) { androidx.compose.runtime.mutableStateOf(initialTab) }
     val haptics = rememberHaptics()
+    val title = when (tab) {
+        NeteaseTab.MINE -> "我的"
+        NeteaseTab.DISCOVER -> "首页"
+        NeteaseTab.CHARTS -> "排行榜"
+        NeteaseTab.SEARCH -> "搜索"
+        NeteaseTab.MESSAGES -> "消息"
+    }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.statusBarsPadding().padding(start = 20.dp, top = 18.dp, end = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("网易云音乐", Modifier.weight(1f), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+        Row(
+            Modifier.statusBarsPadding().padding(start = 20.dp, top = 18.dp, end = 12.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+            GhostIconButton(Icons.Rounded.Mail, "消息", {
+                haptics.tick(HapticArea.MENUS)
+                tab = NeteaseTab.MESSAGES
+            }, size = 40.dp, iconSize = 21.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            GhostIconButton(Icons.Rounded.Settings, "设置", onOpenSettings, size = 40.dp, iconSize = 21.dp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        PillTabs(
-            NeteaseTab.entries.map { it to it.label },
-            tab,
-            { haptics.tick(HapticArea.MENUS); tab = it },
-            Modifier.padding(bottom = 10.dp),
-        )
         AnimatedContent(
             targetState = tab,
             modifier = Modifier.weight(1f),
@@ -203,7 +222,7 @@ private fun NeteaseHome(
         ) { tab ->
             when {
                 tab == NeteaseTab.MINE || client == null ->
-                    NeteaseMine(state, onlinePlayback, bottomContentPadding, onLogin, onRefresh, onOpenPlaylist, onOnlinePlayback, onSignOut)
+                    NeteaseMine(state, onlinePlayback, bottomContentPadding, onLogin, onRefresh, onOpenPlaylist, onOnlinePlayback, onSignOut, onOpenLibrary)
                 tab == NeteaseTab.DISCOVER -> NeteaseDiscover(client, state.account != null, bottomContentPadding, onOpenPlaylist)
                 tab == NeteaseTab.CHARTS -> NeteaseCharts(client, bottomContentPadding, onOpenPlaylist)
                 tab == NeteaseTab.SEARCH -> NeteaseSearch(client, bottomContentPadding, currentTrackId, onOpenPlaylist) { songs, index -> onPlay(songs, index, false) }
@@ -223,6 +242,7 @@ private fun NeteaseMine(
     onOpenPlaylist: (NeteasePlaylistSummary) -> Unit,
     onOnlinePlayback: (Boolean) -> Unit,
     onSignOut: () -> Unit,
+    onOpenLibrary: () -> Unit = {},
 ) {
     val account = state.account
     val liked = state.playlists.firstOrNull { it.liked }
@@ -236,9 +256,15 @@ private fun NeteaseMine(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (account == null) {
-            item(span = { GridItemSpan(maxLineSpan) }, key = "login") { LoginCard(onLogin) }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "library") { MotionItem { LocalLibraryCard(onOpenLibrary) } }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "login") {
+                Column {
+                    LoginCard(onLogin)
+                }
+            }
             return@LazyVerticalGrid
         }
+        item(span = { GridItemSpan(maxLineSpan) }, key = "library") { MotionItem { LocalLibraryCard(onOpenLibrary) } }
         item(span = { GridItemSpan(maxLineSpan) }, key = "account") {
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
@@ -307,6 +333,40 @@ private fun NeteaseMine(
             item(span = { GridItemSpan(maxLineSpan) }, key = "saved-title") { Overline("收藏的歌单", itemMotion().padding(start = 6.dp, top = 14.dp, bottom = 2.dp)) }
             itemsIndexed(saved, key = { index, it -> "saved:$index:${it.id}" }) { _, playlist -> MotionItem { PlaylistTile(playlist) { onOpenPlaylist(playlist) } } }
         }
+    }
+}
+
+@Composable
+private fun LocalLibraryCard(onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .7f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(RoundedCornerShape(13.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = .14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            StyledIcon(Icons.Outlined.LibraryMusic, null, Modifier.size(21.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("本地音乐", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "已下载的歌曲、专辑与歌单",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        StyledIcon(
+            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            null,
+            Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f),
+        )
     }
 }
 

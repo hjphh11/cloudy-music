@@ -66,7 +66,7 @@ import java.io.FileInputStream
 import java.util.UUID
 import kotlin.math.abs
 
-enum class AppDestination { NOW_PLAYING, LIBRARY, ONLINE, SETTINGS }
+enum class AppDestination { NOW_PLAYING, HOME, SEARCH, CHARTS, MINE, LIBRARY, SETTINGS }
 
 enum class OutputMode(val label: String, val description: String) {
     STANDARD("标准", "16 位，经系统混音器输出，兼容性最好"),
@@ -194,7 +194,7 @@ data class MainUiState(
     val usbBitPerfectState: UsbBitPerfectState = UsbBitPerfectState(UsbBitPerfectStatus.NO_DEVICE),
     val settings: UserSettings = UserSettings(),
     val artworkColors: List<Int> = ArtworkPaletteRepository.DefaultColors,
-    val destination: AppDestination = AppDestination.LIBRARY,
+    val destination: AppDestination = AppDestination.HOME,
     val libraryFilter: LibraryFilter = LibraryFilter.ALL,
     val libraryViewMode: LibraryViewMode = LibraryViewMode.LIST,
     val librarySortMode: LibrarySortMode = LibrarySortMode.TITLE,
@@ -316,8 +316,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val destination = MutableStateFlow(startDestination())
     private var returnDestination = startDestination()
 
-    private fun startDestination(): AppDestination =
-        if (settingsRepository.settings.value.startPage == "streaming") AppDestination.ONLINE else AppDestination.LIBRARY
+    private fun startDestination(): AppDestination = when (settingsRepository.settings.value.startPage) {
+        "library" -> AppDestination.LIBRARY
+        else -> AppDestination.HOME
+    }
     private val filter = MutableStateFlow(LibraryFilter.ALL)
     private val search = MutableStateFlow("")
     private val viewMode = MutableStateFlow(enumPreference(KEY_VIEW_MODE, LibraryViewMode.LIST))
@@ -518,7 +520,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun collapseNowPlaying() {
-        val target = returnDestination.takeIf { it != AppDestination.NOW_PLAYING } ?: AppDestination.LIBRARY
+        val target = returnDestination.takeIf { it != AppDestination.NOW_PLAYING } ?: AppDestination.HOME
         destination.value = target
         lyricsVisible.value = false
     }

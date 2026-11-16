@@ -211,7 +211,7 @@ data class UserSettings(
     val playerFullscreen: String = "off",
     val keepScreenOn: Boolean = false,
     val multiAppPlayback: Boolean = false,
-    val startPage: String = "library",
+    val startPage: String = "home",
     val startLibrarySection: String = "ALL",
 )
 

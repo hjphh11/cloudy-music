@@ -1,7 +1,0 @@
-[
-{
-  "directory": "D:/zm/cloudy/tools/olbyine/src/app/.cxx/Debug/2b411265/arm64-v8a",
-  "command": "D:\\zm\\cloudy\\tools\\android-sdk\\ndk\\26.3.11579264\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe --target=aarch64-none-linux-android29 --sysroot=D:/zm/cloudy/tools/android-sdk/ndk/26.3.11579264/toolchains/llvm/prebuilt/windows-x86_64/sysroot -Dolbyineusb_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security -O2 -fno-limit-debug-info  -fPIC -o CMakeFiles\\olbyineusb.dir\\olbyine_usb.c.o -c D:\\zm\\cloudy\\tools\\olbyine\\src\\app\\src\\main\\cpp\\olbyine_usb.c",
-  "file": "D:\\zm\\cloudy\\tools\\olbyine\\src\\app\\src\\main\\cpp\\olbyine_usb.c"
-}
-]
