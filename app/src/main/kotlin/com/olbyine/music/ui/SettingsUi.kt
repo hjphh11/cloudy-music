@@ -1207,7 +1207,7 @@ private fun AboutPage(state: MainUiState, viewModel: MainViewModel) {
         SettingSwitch(
             Icons.Rounded.Refresh,
             "自动检测更新",
-            "每次启动时检查 GitHub Releases 是否有新版本",
+            "启动时检查 Cloudy 是否有新版本（跳过某个版本后不再提醒该版本）",
             state.settings.autoUpdateCheck,
         ) { viewModel.setAutoUpdateCheck(it) }
         GroupDivider()
@@ -1216,7 +1216,7 @@ private fun AboutPage(state: MainUiState, viewModel: MainViewModel) {
             "检查更新",
             when {
                 checking -> "正在检查…"
-                update != null -> "发现新版本 ${update?.version}"
+                update != null -> "有新版本 ${update?.version}"
                 else -> "当前版本 ${BuildConfig.VERSION_NAME}"
             },
         ) {

@@ -1183,6 +1183,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissAppUpdate() {
+        _appUpdate.value?.version?.takeIf(String::isNotBlank)?.let { version ->
+            // 记下用户跳过的版本，同一个版本下次启动不再打扰
+            settingsRepository.setSkippedUpdateVersion(version)
+        }
         _appUpdate.value = null
     }
 
@@ -1193,7 +1197,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val result = runCatching { app.updateChecker.check() }
             _updateChecking.value = false
             result.onSuccess { update ->
-                _appUpdate.value = update
+                val skipped = settingsRepository.settings.value.skippedUpdateVersion
+                val show = update != null && (manual || update.version != skipped)
+                _appUpdate.value = if (show) update else null
                 if (manual) message.value = if (update == null) "已是最新版本" else "发现新版本 ${update.version}"
             }.onFailure { error ->
                 if (error is CancellationException) throw error

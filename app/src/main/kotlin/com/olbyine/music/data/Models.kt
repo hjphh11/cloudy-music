@@ -208,6 +208,7 @@ data class UserSettings(
     val neteaseDownloadLyrics: Boolean = true,
     val neteaseDownloadCover: Boolean = false,
     val autoUpdateCheck: Boolean = true,
+    val skippedUpdateVersion: String = "",
     val neteaseQuality: String = "exhigh",
     val playerFullscreen: String = "off",
     val keepScreenOn: Boolean = false,

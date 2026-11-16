@@ -15,6 +15,13 @@ data class AppUpdate(
     val apkUrl: String?,
 )
 
+/**
+ * Cloudy 自己的更新检查。
+ *
+ * 不再去问上游仓库的 release，而是读对象存储上的一份静态清单
+ * （[MANIFEST_URL]），发版时只改清单、不用动客户端。
+ * 版本判定优先用清单里的 versionCode，缺省时退回版本号比较。
+ */
 class UpdateChecker {
     private val client = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
@@ -23,40 +30,37 @@ class UpdateChecker {
 
     suspend fun check(): AppUpdate? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("https://api.github.com/repos/$REPO/releases/latest")
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Olbyine/${BuildConfig.VERSION_NAME}")
+            .url(MANIFEST_URL)
+            .header("Accept", "application/json")
+            .header("User-Agent", "Cloudy/${BuildConfig.VERSION_NAME}")
+            .header("Cache-Control", "no-cache")
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@withContext null
             val body = response.body?.string().orEmpty().ifBlank { return@withContext null }
             val json = JSONObject(body)
-            val tag = json.optString("tag_name").ifBlank { return@withContext null }
-            val version = tag.removePrefix("v").removePrefix("V").trim()
-            if (version.isBlank() || !isNewer(version, BuildConfig.VERSION_NAME)) return@withContext null
-            var apk: String? = null
-            val assets = json.optJSONArray("assets")
-            if (assets != null) {
-                for (index in 0 until assets.length()) {
-                    val item = assets.optJSONObject(index) ?: continue
-                    val name = item.optString("name")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apk = item.optString("browser_download_url").takeIf(String::isNotBlank)
-                        break
-                    }
-                }
-            }
+            val version = json.optString("versionName").removePrefix("v").removePrefix("V").trim()
+            if (version.isBlank()) return@withContext null
+            val code = json.optInt("versionCode", 0)
+            val newer = if (code > 0) code > BuildConfig.VERSION_CODE else isNewer(version, BuildConfig.VERSION_NAME)
+            if (!newer) return@withContext null
             AppUpdate(
                 version = version,
-                notes = json.optString("body").trim(),
-                pageUrl = json.optString("html_url").ifBlank { "https://github.com/$REPO/releases" },
-                apkUrl = apk,
+                notes = plainNotes(json.optString("notes")),
+                pageUrl = json.optString("pageUrl").ifBlank { PAGE_URL },
+                apkUrl = json.optString("apkUrl")
+                    .trim()
+                    .takeIf { it.endsWith(".apk", ignoreCase = true) },
             )
         }
     }
 
     companion object {
-        const val REPO = "Huliang2597/olbyine-music"
+        /** 版本清单。发版时改这一份 JSON 即可。 */
+        const val MANIFEST_URL = "https://cn-nb1.rains3.com/qingwu/cloudy/version.json"
+
+        /** 清单缺失时的兜底下载页。 */
+        const val PAGE_URL = "https://cn-nb1.rains3.com/qingwu/cloudy/index.html"
 
         fun isNewer(candidate: String, current: String): Boolean {
             val left = parts(candidate)
@@ -73,5 +77,23 @@ class UpdateChecker {
             version.split('.', '-', '+', '_', ' ')
                 .map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 }
                 .dropLastWhile { it == 0 }
+
+        /**
+         * 弹窗是纯文本渲染，清单里就算写了 Markdown 也要把标记去掉，
+         * 否则用户看到的是「### USB 独占与音频输出」这种原始符号。
+         */
+        internal fun plainNotes(raw: String): String = raw
+            .lineSequence()
+            .map { line ->
+                var text = line.trim()
+                text = text.removePrefix("######").removePrefix("#####").removePrefix("####")
+                    .removePrefix("###").removePrefix("##").removePrefix("#")
+                text = text.trimStart('-', '*', '+', '•').trim()
+                text = text.replace("**", "").replace("__", "").replace("`", "")
+                text
+            }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+            .trim()
     }
 }

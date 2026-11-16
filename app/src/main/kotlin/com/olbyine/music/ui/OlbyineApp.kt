@@ -1532,7 +1532,7 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
     appUpdate?.let { update ->
         OlbyineDialog(
             onDismissRequest = viewModel::dismissAppUpdate,
-            title = "发现新版本 ${update.version}",
+            title = "Cloudy 有新版本 ${update.version}",
             confirmButton = {
                 GlassTextButton(onClick = {
                     val target = update.apkUrl ?: update.pageUrl

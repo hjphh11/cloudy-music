@@ -155,6 +155,7 @@ class SettingsRepository(context: Context) {
     fun setNeteaseDownloadCover(value: Boolean) = update { it.copy(neteaseDownloadCover = value) }
 
     fun setAutoUpdateCheck(value: Boolean) = update { it.copy(autoUpdateCheck = value) }
+    fun setSkippedUpdateVersion(value: String) = update { it.copy(skippedUpdateVersion = value) }
     fun setNeteaseQuality(value: String) = update { it.copy(neteaseQuality = value) }
 
     fun setPlayerFullscreen(value: String) = update { it.copy(playerFullscreen = value) }
@@ -247,6 +248,7 @@ class SettingsRepository(context: Context) {
             .putBoolean(KEY_NETEASE_DOWNLOAD_LYRICS, next.neteaseDownloadLyrics)
             .putBoolean(KEY_NETEASE_DOWNLOAD_COVER, next.neteaseDownloadCover)
             .putBoolean(KEY_AUTO_UPDATE, next.autoUpdateCheck)
+            .putString(KEY_SKIPPED_UPDATE, next.skippedUpdateVersion)
             .putString(KEY_NETEASE_QUALITY, next.neteaseQuality)
                 .putString(KEY_PLAYER_FULLSCREEN, next.playerFullscreen)
                 .putBoolean(KEY_KEEP_SCREEN_ON, next.keepScreenOn)
@@ -354,6 +356,7 @@ class SettingsRepository(context: Context) {
             neteaseDownloadLyrics = b(KEY_NETEASE_DOWNLOAD_LYRICS, true),
             neteaseDownloadCover = b(KEY_NETEASE_DOWNLOAD_COVER, false),
             autoUpdateCheck = b(KEY_AUTO_UPDATE, true),
+            skippedUpdateVersion = s(KEY_SKIPPED_UPDATE, null) ?: "",
             neteaseQuality = s(KEY_NETEASE_QUALITY, null) ?: "exhigh",
             playerFullscreen = s(KEY_PLAYER_FULLSCREEN, null) ?: "off",
             keepScreenOn = b(KEY_KEEP_SCREEN_ON, false),
@@ -395,6 +398,7 @@ class SettingsRepository(context: Context) {
         const val KEY_NETEASE_DOWNLOAD_COVER = "netease_download_cover"
         const val KEY_KUWO_QUALITY = "kuwo_quality"
         const val KEY_AUTO_UPDATE = "auto_update_check"
+        const val KEY_SKIPPED_UPDATE = "skipped_update_version"
         const val KEY_NETEASE_QUALITY = "netease_quality"
     const val KEY_PLAYER_FULLSCREEN = "player_fullscreen"
     const val KEY_KEEP_SCREEN_ON = "player_keep_screen_on"
