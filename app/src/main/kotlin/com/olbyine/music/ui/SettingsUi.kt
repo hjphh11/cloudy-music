@@ -131,6 +131,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -140,9 +141,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -243,6 +246,100 @@ private fun SettingsPage.matches(query: String): Boolean {
     return text.contains(query.trim(), ignoreCase = true)
 }
 
+/**
+ * 「设置」里的液态玻璃开关。只在设置页内为 true，其它页面看到的是默认 false，
+ * 这样卡片玻璃不会跟着跑到音乐库、播放页去抢 GPU。
+ */
+internal val LocalSettingsGlass = staticCompositionLocalOf { false }
+
+/** 设置页卡片是否走真玻璃：非原生风格 + 用户开了液态玻璃 + 系统支持 RenderEffect。 */
+@Composable
+internal fun settingsLiquidGlass(): Boolean {
+    if (LocalStyleSpec.current.style == UiStyle.MATERIAL) return false
+    if (!LocalSettingsGlass.current) return false
+    return Build.VERSION.SDK_INT >= 31
+}
+
+/**
+ * 设置卡片 / 顶部大卡的玻璃参数。
+ *
+ * 只有 hero 大卡和搜索框做 AGSL 折射（strong），普通分组卡片只做模糊 + 边缘高光：
+ * 一页七八张卡片同时折射没必要，也太吃 GPU，视觉层次反而更清楚。
+ */
+@Composable
+internal fun settingsCardGlass(corner: Dp, strong: Boolean = false): GlassStyle {
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.background.luminance() < .5f
+    return GlassStyle(
+        cornerRadius = corner,
+        blur = if (strong) 26.dp else 16.dp,
+        tint = colors.surfaceContainerLow.copy(alpha = if (dark) .48f else .56f),
+        saturation = if (dark) 1.35f else 1.25f,
+        contrast = 1.04f,
+        lens = strong && Build.VERSION.SDK_INT >= 33,
+        refractionHeight = if (strong) 30.dp else 0.dp,
+        refractionAmount = if (strong) 14.dp else 0.dp,
+        dispersion = false,
+        highlight = Color.White.copy(alpha = if (dark) .30f else .62f),
+        highlightWidth = .9.dp,
+        shadow = if (strong) 16.dp else 8.dp,
+        fallback = cardColor(),
+    )
+}
+
+/** 分组标题：左侧一根色条，颜色跟着分组走，和卡片里的图标色呼应。 */
+@Composable
+private fun SettingsSectionTitle(title: String) {
+    val spec = LocalStyleSpec.current
+    val accent = SystemTileColors[(title.hashCode() and 0x7fffffff) % SystemTileColors.size]
+    Row(
+        Modifier.padding(start = spec.cardMargin + 18.dp, end = 18.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(width = 3.dp, height = 11.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(accent.copy(alpha = .85f)),
+        )
+        Spacer(Modifier.width(7.dp))
+        Overline(title)
+    }
+}
+
+/**
+ * 设置页的氛围背景：一层底色 + 三团色斑。
+ *
+ * 它的作用不只是好看——液态玻璃要「有东西可折射」才看得出来，
+ * 纯色底下的玻璃卡片跟半透明卡片没有区别。这一层同时充当卡片的
+ * BackdropSource，卡片采样它就能得到真实的模糊与折射。
+ */
+@Composable
+private fun SettingsAtmosphere(source: BackdropSource) {
+    val colors = MaterialTheme.colorScheme
+    val spec = LocalStyleSpec.current
+    val dark = colors.background.luminance() < .5f
+    val grouped = StylePalettes.groupedBackground(spec.style, dark)
+    val onBackdrop = LocalPageBackdrop.current
+    val tintA = colors.primary.copy(alpha = if (dark) .34f else .20f)
+    val tintB = colors.tertiary.copy(alpha = if (dark) .26f else .15f)
+    val tintC = colors.secondary.copy(alpha = if (dark) .20f else .12f)
+    val strong = LocalSettingsGlass.current && Build.VERSION.SDK_INT >= 31
+    Box(
+        Modifier.fillMaxSize().backdropSource(source).drawBehind {
+            // 有封面/自定义背景时不能盖住它，只叠色斑
+            if (!onBackdrop) drawRect(grouped ?: colors.background)
+            if (strong) {
+                val w = size.width
+                val h = size.height
+                drawCircle(Brush.radialGradient(listOf(tintA, Color.Transparent), center = Offset(w * .10f, h * .04f), radius = w * .92f), radius = w * .92f, center = Offset(w * .10f, h * .04f))
+                drawCircle(Brush.radialGradient(listOf(tintB, Color.Transparent), center = Offset(w * 1.02f, h * .30f), radius = w * .70f), radius = w * .70f, center = Offset(w * 1.02f, h * .30f))
+                drawCircle(Brush.radialGradient(listOf(tintC, Color.Transparent), center = Offset(w * .24f, h * .86f), radius = w * .78f), radius = w * .78f, center = Offset(w * .24f, h * .86f))
+            }
+        },
+    )
+}
+
+
 @Composable
 internal fun SettingsScreen(
     state: MainUiState,
@@ -270,6 +367,7 @@ internal fun SettingsScreen(
     }
     val material = LocalStyleSpec.current.style == UiStyle.MATERIAL
     val axis = with(androidx.compose.ui.platform.LocalDensity.current) { 30.dp.roundToPx() }
+    CompositionLocalProvider(LocalSettingsGlass provides state.settings.liquidGlassEnabled) {
     AnimatedContent(
         targetState = page,
         transitionSpec = {
@@ -291,7 +389,7 @@ internal fun SettingsScreen(
                 page = it
             }
         } else {
-            SettingsSubPage(shown.title, bottomContentPadding, onBack = closePage) {
+            SettingsSubPage(shown, bottomContentPadding, onBack = closePage) {
                 when (shown) {
                     SettingsPage.APPEARANCE -> AppearancePage(state, viewModel, onPickBackground)
                     SettingsPage.PLAYER -> PlayerSettingsPage(state, viewModel) {
@@ -314,59 +412,117 @@ internal fun SettingsScreen(
             }
         }
     }
+    }
 }
 
 @Composable
 private fun SettingsHome(state: MainUiState, bottomContentPadding: Dp, scroll: androidx.compose.foundation.ScrollState, onOpen: (SettingsPage) -> Unit) {
-    val source = rememberBackdropSource()
+    // 两套采样源：卡片折射背景层，顶栏折射滚过去的内容
+    val atmosphere = rememberBackdropSource()
+    val content = rememberBackdropSource()
     val density = LocalDensity.current
     val statusBarPx = WindowInsets.statusBars.getTop(density)
-    Box(Modifier.fillMaxSize().then(groupedPage())) {
-        Column(
-            Modifier.fillMaxSize()
-                .backdropSource(source)
-                .verticalScroll(scroll)
-                .padding(bottom = bottomContentPadding + 28.dp),
-        ) {
-            ScreenHeader("设置", "Cloudy ${BuildConfig.VERSION_NAME}")
-            var query by rememberSaveable { mutableStateOf("") }
-            Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
-                OlbyineSearchField(query, { query = it }, "搜索设置项，如「缓存」「歌词」「玻璃」")
-            }
-            if (query.isNotBlank()) {
-                val hits = SettingsPage.entries.filter { it.matches(query) }
-                SettingsGroup("搜索结果") {
-                    if (hits.isEmpty()) {
-                        Text(
-                            "没有匹配「${query.trim()}」的设置项",
-                            Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        val compactHits = LocalStyleSpec.current.style == UiStyle.IOS
-                        hits.forEachIndexed { index, page ->
+    Box(Modifier.fillMaxSize()) {
+        SettingsAtmosphere(atmosphere)
+        CompositionLocalProvider(LocalGlassSource provides atmosphere) {
+            Column(
+                Modifier.fillMaxSize()
+                    .backdropSource(content)
+                    .verticalScroll(scroll)
+                    .padding(bottom = bottomContentPadding + 28.dp),
+            ) {
+                SettingsMasthead(state)
+                var query by rememberSaveable { mutableStateOf("") }
+                Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
+                    OlbyineSearchField(query, { query = it }, "搜索设置项，如「缓存」「歌词」「玻璃」")
+                }
+                if (query.isNotBlank()) {
+                    val hits = SettingsPage.entries.filter { it.matches(query) }
+                    SettingsGroup("搜索结果") {
+                        if (hits.isEmpty()) {
+                            Text(
+                                "没有匹配「${query.trim()}」的设置项",
+                                Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            val compactHits = LocalStyleSpec.current.style == UiStyle.IOS
+                            hits.forEachIndexed { index, page ->
+                                if (index > 0) GroupDivider()
+                                NavRow(page.icon, page.title, page.subtitle, badge = badgeFor(page, state), compact = compactHits) { onOpen(page) }
+                            }
+                        }
+                    }
+                    return@Column
+                }
+                StyleCard(state) { onOpen(SettingsPage.APPEARANCE) }
+                val compact = LocalStyleSpec.current.style == UiStyle.IOS
+                SettingsSections.forEach { (title, pages) ->
+                    SettingsGroup(title) {
+                        pages.forEachIndexed { index, page ->
                             if (index > 0) GroupDivider()
-                            NavRow(page.icon, page.title, page.subtitle, badge = badgeFor(page, state), compact = compactHits) { onOpen(page) }
+                            NavRow(page.icon, page.title, page.subtitle, badge = badgeFor(page, state), compact = compact) { onOpen(page) }
                         }
                     }
                 }
-                return@Column
-            }
-            StyleCard(state) { onOpen(SettingsPage.APPEARANCE) }
-            val compact = LocalStyleSpec.current.style == UiStyle.IOS
-            SettingsSections.forEach { (title, pages) ->
-                SettingsGroup(title) {
-                    pages.forEachIndexed { index, page ->
-                        if (index > 0) GroupDivider()
-                        NavRow(page.icon, page.title, page.subtitle, badge = badgeFor(page, state), compact = compact) { onOpen(page) }
-                    }
-                }
+                SettingsFooter()
             }
         }
-        CompactTitleBar("设置", source, scroll, statusBarPx)
+        CompactTitleBar("设置", content, scroll, statusBarPx)
     }
 }
+
+/** 设置页顶部：大标题 + 一行状态摘要。 */
+@Composable
+private fun SettingsMasthead(state: MainUiState) {
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.statusBarsPadding().padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 2.dp)) {
+        Text(
+            "设置",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = colors.onBackground,
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Cloudy ${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.size(3.dp).clip(CircleShape).background(colors.onSurfaceVariant.copy(alpha = .45f)))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                state.settings.uiStyle.label + " · " + when (state.settings.themeMode) {
+                    com.olbyine.music.data.ThemeMode.DARK -> "深色"
+                    com.olbyine.music.data.ThemeMode.LIGHT -> "浅色"
+                    else -> "跟随系统"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 页面底部收口，避免最后一张卡片贴着导航栏。 */
+@Composable
+private fun SettingsFooter() {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().padding(top = 26.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "Cloudy · 基于 Olbyine",
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant.copy(alpha = .6f),
+        )
+    }
+}
+
 
 private fun badgeFor(page: SettingsPage, state: MainUiState): String? {
     val settings = state.settings
@@ -380,29 +536,40 @@ private fun badgeFor(page: SettingsPage, state: MainUiState): String? {
 }
 
 @Composable
-private fun SettingsSubPage(title: String, bottomContentPadding: Dp, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+private fun SettingsSubPage(page: SettingsPage, bottomContentPadding: Dp, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val title = page.title
     val scroll = rememberScrollState()
-    val source = rememberBackdropSource()
+    val atmosphere = rememberBackdropSource()
+    val contentSource = rememberBackdropSource()
     val density = LocalDensity.current
     val statusBarPx = WindowInsets.statusBars.getTop(density)
-    Box(Modifier.fillMaxSize().then(groupedPage())) {
-        Column(
-            Modifier.fillMaxSize()
-                .backdropSource(source)
-                .verticalScroll(scroll)
-                .padding(bottom = bottomContentPadding + 28.dp),
-        ) {
-            Spacer(Modifier.statusBarsPadding().height(56.dp))
-            Text(
-                title,
-                Modifier.padding(start = 24.dp, end = 24.dp, bottom = 4.dp),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-            content()
+    Box(Modifier.fillMaxSize()) {
+        SettingsAtmosphere(atmosphere)
+        CompositionLocalProvider(LocalGlassSource provides atmosphere) {
+            Column(
+                Modifier.fillMaxSize()
+                    .backdropSource(contentSource)
+                    .verticalScroll(scroll)
+                    .padding(bottom = bottomContentPadding + 28.dp),
+            ) {
+                Spacer(Modifier.statusBarsPadding().height(54.dp))
+                Text(
+                    title,
+                    Modifier.padding(start = 24.dp, end = 24.dp),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    page.subtitle,
+                    Modifier.padding(start = 24.dp, end = 24.dp, top = 6.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                content()
+            }
         }
-        CompactTitleBar(title, source, scroll, statusBarPx, onBack = onBack)
+        CompactTitleBar(title, contentSource, scroll, statusBarPx, onBack = onBack)
     }
 }
 
@@ -448,6 +615,16 @@ private fun CompactTitleBar(
 private fun AppearancePage(state: MainUiState, viewModel: MainViewModel, onPickBackground: () -> Unit) {
     val settings = state.settings
     SettingsGroup("界面风格") { StylePicker(settings.uiStyle, viewModel::setUiStyle) }
+    SettingsGroup("材质") {
+        SettingSwitch(Icons.Rounded.BlurOn, "液态玻璃", "设置页卡片、底栏与迷你播放器使用透镜折射与边缘高光；关闭时为毛玻璃",
+            settings.liquidGlassEnabled, viewModel::setLiquidGlassEnabled)
+        GroupDivider()
+        SettingSwitch(Icons.Rounded.Layers, "液态玻璃小弹窗", "菜单与小弹窗使用液态玻璃；关闭时为毛玻璃",
+            settings.glassPopups, viewModel::setGlassPopups)
+        GroupDivider()
+        SettingSwitch(Icons.Rounded.Wallpaper, "封面毛玻璃背景", "音乐库、网易云和设置的背景使用正在播放歌曲封面的高斯模糊，卡片半透明",
+            settings.artworkBackdrop, viewModel::setArtworkBackdrop)
+    }
     SettingsGroup("启动") {
         ChoiceRow(
             Icons.Rounded.Home, "默认启动页", "打开应用时先进入的页面",
@@ -513,16 +690,6 @@ private fun AppearancePage(state: MainUiState, viewModel: MainViewModel, onPickB
                 )
             }
         }
-    }
-    SettingsGroup("材质") {
-        SettingSwitch(Icons.Rounded.BlurOn, "液态玻璃", "底栏与迷你播放器使用透镜折射、色散和高光；关闭时为毛玻璃",
-            settings.liquidGlassEnabled, viewModel::setLiquidGlassEnabled)
-        GroupDivider()
-        SettingSwitch(Icons.Rounded.Layers, "液态玻璃小弹窗", "菜单与小弹窗使用液态玻璃；关闭时为毛玻璃",
-            settings.glassPopups, viewModel::setGlassPopups)
-        GroupDivider()
-        SettingSwitch(Icons.Rounded.Wallpaper, "封面毛玻璃背景", "音乐库、网易云和设置的背景使用正在播放歌曲封面的高斯模糊，卡片半透明",
-            settings.artworkBackdrop, viewModel::setArtworkBackdrop)
     }
     SettingsGroup("玻璃参数") {
         GlassTuningEditor(settings.glassTuning) { t -> viewModel.setGlassTuning(t.highlight, t.blur, t.opacity, t.refraction, t.gyro) }
@@ -1344,8 +1511,15 @@ private fun NavRow(
             }
         }
         if (badge != null) {
-            Text(badge, style = if (compact) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(6.dp))
+            val colors = MaterialTheme.colorScheme
+            Box(
+                Modifier.clip(CircleShape)
+                    .background(colors.onSurfaceVariant.copy(alpha = .10f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            ) {
+                Text(badge, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(8.dp))
         }
         StyledIcon(Icons.AutoMirrored.Rounded.ArrowForwardIos, null, Modifier.size(if (compact) 13.dp else 14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .6f))
     }
@@ -1356,26 +1530,55 @@ private fun StyleCard(state: MainUiState, onClick: () -> Unit) {
     val spec = LocalStyleSpec.current
     val colors = MaterialTheme.colorScheme
     val dark = colors.background.luminance() < .5f
+    val source = LocalGlassSource.current
+    val liquid = source != null && settingsLiquidGlass()
+    val shape = RoundedCornerShape(spec.cardCorner)
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = spec.cardMargin).padding(top = 10.dp)
-            .clip(RoundedCornerShape(spec.cardCorner)).background(cardColor())
+        Modifier.fillMaxWidth().padding(horizontal = spec.cardMargin).padding(top = 12.dp)
+            .then(
+                if (liquid) Modifier.glass(source, settingsCardGlass(spec.cardCorner, strong = true))
+                else Modifier.clip(shape).background(cardColor()),
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(54.dp).clip(RoundedCornerShape(if (spec.style == UiStyle.MATERIAL) 27.dp else 14.dp))
+            Modifier.size(56.dp).clip(RoundedCornerShape(if (spec.style == UiStyle.MATERIAL) 28.dp else 16.dp))
                 .background(
-                    androidx.compose.ui.graphics.Brush.linearGradient(
-                        if (spec.style == UiStyle.IOS) listOf(if (dark) Color(0xFF3A3A3C) else Color(0xFF1C1C1E), if (dark) Color(0xFF1C1C1E) else Color(0xFF48484A))
-                        else listOf(colors.primary, colors.primary.copy(alpha = .7f)),
+                    Brush.linearGradient(
+                        when {
+                            spec.style == UiStyle.IOS -> listOf(if (dark) Color(0xFF3A3A3C) else Color(0xFF1C1C1E), if (dark) Color(0xFF1C1C1E) else Color(0xFF48484A))
+                            dark -> listOf(colors.primary, colors.tertiary.copy(alpha = .85f))
+                            else -> listOf(colors.primary, colors.primary.copy(alpha = .72f))
+                        },
                     ),
                 ),
             contentAlignment = Alignment.Center,
-        ) { StyledIcon(Icons.Rounded.MusicNote, null, Modifier.size(28.dp), tint = if (spec.style == UiStyle.IOS) Color.White else colors.onPrimary) }
-        Spacer(Modifier.width(14.dp))
+        ) {
+            StyledIcon(
+                Icons.Rounded.MusicNote,
+                null,
+                Modifier.size(28.dp),
+                tint = if (spec.style == UiStyle.IOS) Color.White else colors.onPrimary,
+            )
+        }
+        Spacer(Modifier.width(15.dp))
         Column(Modifier.weight(1f)) {
-            Text("Cloudy", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Cloudy", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                if (state.settings.liquidGlassEnabled) {
+                    Box(
+                        Modifier.clip(CircleShape)
+                            .background(colors.primary.copy(alpha = .16f))
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    ) {
+                        Text("液态玻璃", style = MaterialTheme.typography.labelSmall, color = colors.primary)
+                    }
+                }
+            }
+            Spacer(Modifier.height(2.dp))
             Text(
                 "${state.settings.uiStyle.label} 风格 · " + when (state.settings.themeMode) {
                     com.olbyine.music.data.ThemeMode.DARK -> "深色"
@@ -1690,14 +1893,21 @@ private fun pinCustomShortcut(context: android.content.Context, uri: android.net
 @Composable
 internal fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     val spec = LocalStyleSpec.current
-    Column(Modifier.fillMaxWidth().padding(top = if (title.isBlank()) 14.dp else 20.dp)) {
-        if (title.isNotBlank()) Overline(title, Modifier.padding(start = spec.cardMargin + 18.dp, bottom = 8.dp))
+    val source = LocalGlassSource.current
+    val liquid = source != null && settingsLiquidGlass()
+    Column(Modifier.fillMaxWidth().padding(top = if (title.isBlank()) 14.dp else 22.dp)) {
+        if (title.isNotBlank()) SettingsSectionTitle(title)
         Column(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = spec.cardMargin)
-                .clip(RoundedCornerShape(spec.cardCorner))
-                .background(cardColor()),
+                .then(
+                    if (liquid) {
+                        Modifier.glass(source, settingsCardGlass(spec.cardCorner))
+                    } else {
+                        Modifier.clip(RoundedCornerShape(spec.cardCorner)).background(cardColor())
+                    },
+                ),
             content = content,
         )
     }
@@ -1718,10 +1928,15 @@ internal fun cardColor(): Color {
 @Composable
 internal fun GroupDivider() {
     if (!LocalStyleSpec.current.dividers) return
+    val liquid = LocalGlassSource.current != null && settingsLiquidGlass()
     HorizontalDivider(
         Modifier.padding(start = 66.dp),
         thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.outlineVariant,
+        color = if (liquid) {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = .09f)
+        } else {
+            MaterialTheme.colorScheme.outlineVariant
+        },
     )
 }
 

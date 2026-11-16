@@ -1,6 +1,7 @@
 package com.olbyine.music.ui
 
 import android.graphics.BitmapFactory
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -627,6 +628,10 @@ internal fun OlbyineSearchField(
     val rim by animateColorAsState(if (focused) colors.primary.copy(alpha = .55f) else colors.primary.copy(alpha = 0f), tween(OlbyineTokens.Motion.standardMs), label = "search-rim")
     val glyph by animateColorAsState(if (focused) colors.primary else colors.onSurfaceVariant, tween(OlbyineTokens.Motion.standardMs), label = "search-glyph")
     val shape = if (LocalStyleSpec.current.style == com.olbyine.music.data.UiStyle.HYPEROS) RoundedCornerShape(16.dp) else CircleShape
+    // 设置页开了液态玻璃时，搜索框也走真玻璃；其它页面没有采样源，保持原来实色
+    val glassSource = LocalGlassSource.current
+    val glassLiquid = glassSource != null && settingsLiquidGlass()
+    val glassCorner = if (LocalStyleSpec.current.style == com.olbyine.music.data.UiStyle.HYPEROS) 16.dp else 23.dp
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
@@ -645,8 +650,22 @@ internal fun OlbyineSearchField(
                 Modifier
                     .fillMaxWidth()
                     .height(46.dp)
-                    .clip(shape)
-                    .background(colors.surfaceContainerHigh)
+                    .then(
+                        if (glassLiquid) {
+                            Modifier.glass(
+                                glassSource,
+                                settingsCardGlass(glassCorner).copy(
+                                    blur = 14.dp,
+                                    shadow = 0.dp,
+                                    lens = Build.VERSION.SDK_INT >= 33,
+                                    refractionHeight = 12.dp,
+                                    refractionAmount = 5.dp,
+                                ),
+                            )
+                        } else {
+                            Modifier.clip(shape).background(colors.surfaceContainerHigh)
+                        },
+                    )
                     .border(1.5.dp, rim, shape)
                     .padding(start = 15.dp, end = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,

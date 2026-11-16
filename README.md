@@ -11,7 +11,7 @@ Android 10+ · arm64-v8a / armeabi-v7a · Kotlin + Jetpack Compose · AGPL-3.0
 | GitHub Releases | [最新版本](https://github.com/hjphh11/cloudy-music/releases/latest) |
 | 加速下载页 | https://cn-nb1.rains3.com/qingwu/cloudy/index.html |
 
-- 包名 `com.olbyine.music`，版本 1.0.2（build 202）
+- 包名 `com.olbyine.music`，版本 1.0.3（build 203）
 - 签名固定，后续版本可以直接覆盖安装，数据与登录状态不会丢
 - 应用内「设置 → 更新 → 检查更新」读的是上面那份下载页同源的版本清单，不依赖 GitHub 可达性
 
@@ -53,6 +53,7 @@ Android 10+ · arm64-v8a / armeabi-v7a · Kotlin + Jetpack Compose · AGPL-3.0
 | --- | --- | --- |
 | 音源 | 网易云、洛雪、SoundCloud、Navidrome、WebDAV | 只保留网易云 |
 | 导航 | 侧栏多入口 | 底部四入口：首页 / 搜索 / 排行榜 / 我的 |
+| 设置页 | 纯色分组卡片 | 大标题 + 分组色条，开液态玻璃后卡片是真 AGSL 玻璃 |
 | 品牌 | Olbyine | Cloudy + 全新自适应图标 |
 | 首页 | 混合信息流 | 台历推荐大卡、私人 FM、播客横滑、排行榜预览 |
 | 搜索页 | 单一结果列表 | 搜前 / 联想 / 结果三段式 |
