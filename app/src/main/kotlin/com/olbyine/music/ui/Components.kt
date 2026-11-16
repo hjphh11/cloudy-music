@@ -618,6 +618,7 @@ internal fun OlbyineSearchField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     modifier: Modifier = Modifier,
+    onSearch: (() -> Unit)? = null,
 ) {
     val focusManager = LocalFocusManager.current
     val colors = MaterialTheme.colorScheme
@@ -634,7 +635,10 @@ internal fun OlbyineSearchField(
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.onSurface),
         cursorBrush = SolidColor(colors.primary),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+        keyboardActions = KeyboardActions(onSearch = {
+            focusManager.clearFocus()
+            onSearch?.invoke()
+        }),
         interactionSource = interaction,
         decorationBox = { inner ->
             Row(

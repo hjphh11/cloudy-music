@@ -58,6 +58,8 @@ class SettingsRepository(context: Context) {
 
     fun setPlayerGlassButtons(value: Boolean) = update { it.copy(playerGlassButtons = value) }
 
+    fun setPlayerVinyl(value: Boolean) = update { it.copy(playerVinyl = value) }
+
     fun setGlassPopups(value: Boolean) = update { it.copy(glassPopups = value) }
 
     fun setGlassTuning(highlight: Float, blur: Float, opacity: Float, refraction: Float, gyro: Boolean) = update {
@@ -186,6 +188,7 @@ class SettingsRepository(context: Context) {
             .putBoolean(KEY_LIQUID_GLASS, next.liquidGlassEnabled)
             .putBoolean(KEY_DYNAMIC_ACCENT, next.dynamicAccentEnabled)
             .putBoolean(KEY_PLAYER_GLASS_BUTTONS, next.playerGlassButtons)
+            .putBoolean(KEY_PLAYER_VINYL, next.playerVinyl)
             .putBoolean(KEY_GLASS_POPUPS, next.glassPopups)
             .putFloat("glass_highlight", next.glassHighlight)
             .putFloat("glass_blur", next.glassBlur)
@@ -290,6 +293,7 @@ class SettingsRepository(context: Context) {
             liquidGlassEnabled = b(KEY_LIQUID_GLASS, false),
             dynamicAccentEnabled = b(KEY_DYNAMIC_ACCENT, true),
             playerGlassButtons = b(KEY_PLAYER_GLASS_BUTTONS, true),
+            playerVinyl = b(KEY_PLAYER_VINYL, true),
             glassPopups = b(KEY_GLASS_POPUPS, true),
             glassHighlight = f("glass_highlight", 1f),
             glassBlur = f("glass_blur", 1f),
@@ -414,6 +418,7 @@ class SettingsRepository(context: Context) {
         const val KEY_LIQUID_GLASS = "liquid_glass_enabled"
         const val KEY_DYNAMIC_ACCENT = "dynamic_accent_enabled"
         const val KEY_PLAYER_GLASS_BUTTONS = "player_glass_buttons_v2"
+        const val KEY_PLAYER_VINYL = "player_vinyl_v1"
         const val KEY_GLASS_POPUPS = "glass_popups"
         const val KEY_CUSTOM_BG = "custom_background"
         const val KEY_CUSTOM_BG_BLUR = "custom_background_blur"

@@ -150,6 +150,7 @@ data class UserSettings(
     val liquidGlassEnabled: Boolean = false,
     val dynamicAccentEnabled: Boolean = true,
     val playerGlassButtons: Boolean = false,
+    val playerVinyl: Boolean = true,
     val glassPopups: Boolean = true,
     val glassHighlight: Float = 1f,
     val glassBlur: Float = 1f,

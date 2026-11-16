@@ -159,7 +159,7 @@ internal fun TabletSidebar(
         } else {
             Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
                 Text(
-                    "Olbyine",
+                    "Cloudy",
                     Modifier.padding(start = 10.dp, top = 18.dp, bottom = 10.dp),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,

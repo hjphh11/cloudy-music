@@ -71,7 +71,7 @@ enum class AppDestination { NOW_PLAYING, HOME, SEARCH, CHARTS, MINE, LIBRARY, SE
 enum class OutputMode(val label: String, val description: String) {
     STANDARD("标准", "16 位，经系统混音器输出，兼容性最好"),
     HI_RES("高解析", "32 位浮点输出，24 位音源不会被截成 16 位"),
-    USB_DRIVER("USB 独占", "Olbyine 自带驱动直连 USB DAC，绕过系统音频"),
+    USB_DRIVER("USB 独占", "Cloudy 自带驱动直连 USB DAC，绕过系统音频"),
 }
 
 fun com.olbyine.music.data.UserSettings.outputMode(): OutputMode = when {
@@ -808,6 +808,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setUsbBitPerfectEnabled(value: Boolean) = settingsRepository.setUsbBitPerfectEnabled(value)
 
     fun setPlayerGlassButtons(value: Boolean) = settingsRepository.setPlayerGlassButtons(value)
+
+    fun setPlayerVinyl(value: Boolean) = settingsRepository.setPlayerVinyl(value)
 
     fun setGlassPopups(value: Boolean) = settingsRepository.setGlassPopups(value)
 

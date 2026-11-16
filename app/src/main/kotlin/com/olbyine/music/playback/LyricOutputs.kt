@@ -46,7 +46,7 @@ internal class LyricNotificationProvider(context: Context) : DefaultMediaNotific
     @Volatile var lyric: String? = null
 
     init {
-        setSmallIcon(R.drawable.ic_stat_olbyine)
+        setSmallIcon(R.drawable.ic_stat_cloudy)
     }
 
     override fun getNotificationContentTitle(metadata: MediaMetadata): CharSequence? =
@@ -236,7 +236,7 @@ internal class LyricOutputs(
         livePostedAt = SystemClock.uptimeMillis()
         val title = metadata?.extras?.getString(LyricNotificationProvider.EXTRA_TITLE) ?: metadata?.title?.toString().orEmpty()
         val builder = Notification.Builder(context, CHANNEL)
-            .setSmallIcon(if (Build.VERSION.SDK_INT >= 36) R.drawable.ic_stat_olbyine_live else R.drawable.ic_stat_olbyine)
+            .setSmallIcon(if (Build.VERSION.SDK_INT >= 36) R.drawable.ic_stat_olbyine_live else R.drawable.ic_stat_cloudy)
             .setContentTitle(text)
             .setContentText(next ?: title)
             .setTicker(text)

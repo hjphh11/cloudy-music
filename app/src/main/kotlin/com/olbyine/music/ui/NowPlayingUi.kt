@@ -92,6 +92,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -105,6 +106,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -397,6 +401,7 @@ private fun PlayerBody(
                 shared = shared,
                 onTap = onLyrics,
                 direction = rememberSkipDirection(state.playback.currentIndex, state.playback.mediaItemCount),
+                vinyl = state.settings.playerVinyl,
             )
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.height(18.dp))
@@ -532,7 +537,7 @@ private fun LandscapePlayerBody(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.weight(.95f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                PlayerArtwork(track = track, size = cover, playing = state.playback.isPlaying, shared = shared, onTap = onLyrics, direction = rememberSkipDirection(state.playback.currentIndex, state.playback.mediaItemCount))
+                PlayerArtwork(track = track, size = cover, playing = state.playback.isPlaying, shared = shared, onTap = onLyrics, direction = rememberSkipDirection(state.playback.currentIndex, state.playback.mediaItemCount), vinyl = state.settings.playerVinyl)
             }
             Spacer(Modifier.width(28.dp))
             Column(
@@ -1013,6 +1018,7 @@ private fun PlayerArtwork(
     shared: SharedArtworkState,
     onTap: () -> Unit,
     direction: Int = 1,
+    vinyl: Boolean = false,
 ) {
     val reduce = LocalReduceMotion.current
     val scaleState = animateFloatAsState(
@@ -1042,6 +1048,9 @@ private fun PlayerArtwork(
         label = "playing-artwork",
     ) { shown ->
         val motion = LocalMotionArtwork.current
+        val shape: androidx.compose.ui.graphics.Shape =
+            if (vinyl) CircleShape else RoundedCornerShape(OlbyineTokens.Corner.artwork)
+        val spin = rememberVinylSpin(active = vinyl && playing && !reduce, key = shown.id)
         Box(
             Modifier
                 .onGloballyPositioned { coordinates ->
@@ -1057,25 +1066,117 @@ private fun PlayerArtwork(
                     scaleY = s
                     alpha = if (shared.transitioning()) 0f else 1f
                 }
-                .tiltLayer(tilt)
+                .then(if (vinyl) Modifier else Modifier.tiltLayer(tilt))
                 .shadow(
                     elevation = 30.dp,
-                    shape = RoundedCornerShape(OlbyineTokens.Corner.artwork),
+                    shape = shape,
                     ambientColor = glow.copy(alpha = shadowAlpha),
                     spotColor = Color.Black.copy(alpha = shadowAlpha),
                 )
-                .clip(RoundedCornerShape(OlbyineTokens.Corner.artwork))
-                .tiltOverlay(tilt)
+                .clip(shape)
+                .then(if (vinyl) Modifier else Modifier.tiltOverlay(tilt))
                 .pointerInput(shown.id) {
                     detectTapGestures(onTap = { currentTap() })
                 },
         ) {
-            TrackArtwork(shown, Modifier.fillMaxSize(), corner = 0.dp, decodeEdge = LARGE_COVER_EDGE)
-            val cover = motion?.cover
-            if (cover != null) {
-                MotionVideo(cover, playing = motion.playing, modifier = Modifier.fillMaxSize())
+            if (vinyl) {
+                VinylDisc(
+                    angle = spin,
+                    cover = {
+                        TrackArtwork(shown, Modifier.fillMaxSize(), corner = 0.dp, decodeEdge = LARGE_COVER_EDGE)
+                        val cover = motion?.cover
+                        if (cover != null) {
+                            MotionVideo(cover, playing = motion.playing, modifier = Modifier.fillMaxSize())
+                        }
+                    },
+                )
+            } else {
+                TrackArtwork(shown, Modifier.fillMaxSize(), corner = 0.dp, decodeEdge = LARGE_COVER_EDGE)
+                val cover = motion?.cover
+                if (cover != null) {
+                    MotionVideo(cover, playing = motion.playing, modifier = Modifier.fillMaxSize())
+                }
             }
         }
+    }
+}
+
+/**
+ * 黑胶盘面。转速按 33⅓ 转/分折算（约 200°/s），暂停时停在当前角度，
+ * 换歌归零，这样用户能看出「这张唱片转了多久」。
+ */
+@Composable
+private fun rememberVinylSpin(active: Boolean, key: Any?): androidx.compose.runtime.State<Float> {
+    val angle = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(key) { angle.floatValue = 0f }
+    LaunchedEffect(active, key) {
+        if (!active) return@LaunchedEffect
+        var last = withFrameNanos { it }
+        while (true) {
+            withFrameNanos { now ->
+                val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, .12f)
+                last = now
+                angle.floatValue = (angle.floatValue + dt * 200f) % 360f
+            }
+        }
+    }
+    return angle
+}
+
+@Composable
+private fun VinylDisc(angle: androidx.compose.runtime.State<Float>, cover: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().clip(CircleShape)
+            .background(Brush.radialGradient(listOf(Color(0xFF26262E), Color(0xFF111115), Color(0xFF08080A)))),
+    ) {
+        // 纹路随盘旋转
+        Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer { rotationZ = angle.value }
+                .drawBehind {
+                    val c = center
+                    val max = size.minDimension / 2f
+                    var i = 1
+                    while (true) {
+                        val r = max * (0.31f + i * 0.026f)
+                        if (r > max * 0.985f) break
+                        drawCircle(
+                            color = Color.White.copy(alpha = if (i % 4 == 0) .052f else .026f),
+                            radius = r,
+                            center = c,
+                            style = Stroke(width = 1f),
+                        )
+                        i++
+                    }
+                },
+        )
+        // 固定反光，让盘面有金属质感但不跟着转
+        Box(
+            Modifier.fillMaxSize().drawBehind {
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        listOf(Color.White.copy(alpha = .10f), Color.Transparent),
+                        start = androidx.compose.ui.geometry.Offset(size.width * .18f, size.height * .06f),
+                        end = androidx.compose.ui.geometry.Offset(size.width * .62f, size.height * .58f),
+                    ),
+                    radius = size.minDimension * .5f,
+                    center = center,
+                )
+            },
+        )
+        // 唱片封面（圆）
+        Box(
+            Modifier.fillMaxSize(.615f).align(Alignment.Center).clip(CircleShape)
+                .border(1.dp, Color.Black.copy(alpha = .5f), CircleShape),
+        ) {
+            Box(Modifier.fillMaxSize().graphicsLayer { rotationZ = angle.value }) { cover() }
+        }
+        // 中心轴孔
+        Box(
+            Modifier.align(Alignment.Center).size(9.dp).clip(CircleShape)
+                .background(Color(0xFF0A0A0C))
+                .border(.8.dp, Color.White.copy(alpha = .18f), CircleShape),
+        )
     }
 }
 

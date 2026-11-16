@@ -236,6 +236,32 @@ internal fun LyricSweepLine(
                         }
                     }
                 }
+                // 唱字微光：扫光前沿一层柔光，让正在唱的那个字有发光感
+                if (sung > 0f && sung < text.length) {
+                    val gx = originX + sungX
+                    val wide = 30.dp.toPx()
+                    val tight = 11.dp.toPx()
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            listOf(Color.Transparent, ink.copy(alpha = ink.alpha * .15f), Color.Transparent),
+                            startX = gx - wide,
+                            endX = gx + wide,
+                        ),
+                        topLeft = androidx.compose.ui.geometry.Offset(gx - wide, 0f),
+                        size = androidx.compose.ui.geometry.Size(wide * 2, size.height),
+                        blendMode = BlendMode.Plus,
+                    )
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            listOf(Color.Transparent, ink.copy(alpha = ink.alpha * .30f), Color.Transparent),
+                            startX = gx - tight,
+                            endX = gx + tight,
+                        ),
+                        topLeft = androidx.compose.ui.geometry.Offset(gx - tight, 0f),
+                        size = androidx.compose.ui.geometry.Size(tight * 2, size.height),
+                        blendMode = BlendMode.Plus,
+                    )
+                }
                 if (overflow > 0f) {
                     val edge = 20.dp.toPx().coerceAtMost(size.width / 4f)
                     val leftFade = (scroll / edge).coerceIn(0f, 1f)

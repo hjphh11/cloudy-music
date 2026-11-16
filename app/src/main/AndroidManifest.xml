@@ -21,9 +21,9 @@
         android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="false"
         android:hardwareAccelerated="true"
-        android:icon="@mipmap/ic_launcher_porcelain"
+        android:icon="@mipmap/ic_launcher_coral"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_porcelain"
+        android:roundIcon="@mipmap/ic_launcher_coral"
         android:supportsRtl="true"
         android:theme="@style/Theme.Olbyine"
         android:usesCleartextTraffic="true"
@@ -77,7 +77,7 @@
         </activity-alias>
         <activity-alias
             android:name=".IconPorcelain"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_porcelain"
             android:roundIcon="@mipmap/ic_launcher_porcelain"
@@ -89,7 +89,7 @@
         </activity-alias>
         <activity-alias
             android:name=".IconCoral"
-            android:enabled="false"
+            android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_coral"
             android:roundIcon="@mipmap/ic_launcher_coral"
@@ -115,8 +115,8 @@
             android:name=".IconClassic"
             android:enabled="false"
             android:exported="true"
-            android:icon="@drawable/ic_launcher_native"
-            android:roundIcon="@drawable/ic_launcher_native"
+            android:icon="@mipmap/ic_launcher_coral"
+            android:roundIcon="@mipmap/ic_launcher_coral"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

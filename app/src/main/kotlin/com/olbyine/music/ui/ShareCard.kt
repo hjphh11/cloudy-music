@@ -71,7 +71,7 @@ internal object ShareCard {
             canvas.drawBitmap(qr, qrLeft, footer, null)
         }
         val brand = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 46f; typeface = Typeface.DEFAULT_BOLD }
-        canvas.drawText("Olbyine", 90f, footer + 70f, brand)
+        canvas.drawText("Cloudy", 90f, footer + 70f, brand)
         val sub = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(190, 255, 255, 255); textSize = 30f }
         canvas.drawText(when {
             link == null -> "正在用 Olbyine 听"
@@ -82,7 +82,7 @@ internal object ShareCard {
     }
 
     fun save(context: Context, bitmap: Bitmap, title: String): Uri? {
-        val name = "Olbyine_" + title.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(40) + "_" + System.currentTimeMillis() + ".png"
+        val name = "Cloudy_" + title.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(40) + "_" + System.currentTimeMillis() + ".png"
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, name)
             put(MediaStore.Images.Media.MIME_TYPE, "image/png")
