@@ -219,6 +219,29 @@ private val SettingsSections = listOf(
     "" to listOf(SettingsPage.ABOUT),
 )
 
+/** 设置搜索的补充词：用户说「缓存」「深色」「震动」也能找到对应页。 */
+private val SettingsKeywords = mapOf(
+    SettingsPage.APPEARANCE to "主题 深色 浅色 玻璃 毛玻璃 背景 图标 字体 颜色 风格 圆角",
+    SettingsPage.PLAYER to "播放页 封面 动态封面 律动 频谱 按钮",
+    SettingsPage.PLAYER_BUTTONS to "按钮 位置 播放页 显示",
+    SettingsPage.LYRICS to "歌词 字号 字重 偏移 高亮 对齐 逐字",
+    SettingsPage.LYRIC_OUTPUT to "歌词 通知栏 状态栏 桌面小组件 车载 外显",
+    SettingsPage.TRANSITION to "过渡 交叉淡入 无缝 衔接 淡入淡出",
+    SettingsPage.AUDIO to "输出 采样率 位深 USB 独占 位完美 独占 音频",
+    SettingsPage.EQUALIZER to "均衡器 EQ 频段 预设 声道 平衡",
+    SettingsPage.LIBRARY to "曲库 导入 扫描 去重 视频 短音频 标签 元数据",
+    SettingsPage.ONLINE to "账号 登录 网易云 Apple Music 流媒体 WebDAV",
+    SettingsPage.DOWNLOADS to "下载 缓存 存储 空间 清理 占用 删除",
+    SettingsPage.BACKUP to "备份 恢复 导出 导入 配置 WebDAV",
+    SettingsPage.HAPTICS to "震动 触感 反馈 振动",
+    SettingsPage.ABOUT to "版本 开源 许可 关于 更新",
+)
+
+private fun SettingsPage.matches(query: String): Boolean {
+    val text = title + " " + subtitle + " " + SettingsKeywords[this].orEmpty()
+    return text.contains(query.trim(), ignoreCase = true)
+}
+
 @Composable
 internal fun SettingsScreen(
     state: MainUiState,
@@ -305,6 +328,30 @@ private fun SettingsHome(state: MainUiState, bottomContentPadding: Dp, scroll: a
                 .padding(bottom = bottomContentPadding + 28.dp),
         ) {
             ScreenHeader("设置", "Olbyine ${BuildConfig.VERSION_NAME}")
+            var query by rememberSaveable { mutableStateOf("") }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+                OlbyineSearchField(query, { query = it }, "搜索设置项，如「缓存」「歌词」「玻璃」")
+            }
+            if (query.isNotBlank()) {
+                val hits = SettingsPage.entries.filter { it.matches(query) }
+                SettingsGroup("搜索结果") {
+                    if (hits.isEmpty()) {
+                        Text(
+                            "没有匹配「${query.trim()}」的设置项",
+                            Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        val compactHits = LocalStyleSpec.current.style == UiStyle.IOS
+                        hits.forEachIndexed { index, page ->
+                            if (index > 0) GroupDivider()
+                            NavRow(page.icon, page.title, page.subtitle, badge = badgeFor(page, state), compact = compactHits) { onOpen(page) }
+                        }
+                    }
+                }
+                return@Column
+            }
             StyleCard(state) { onOpen(SettingsPage.APPEARANCE) }
             val compact = LocalStyleSpec.current.style == UiStyle.IOS
             SettingsSections.forEach { (title, pages) ->

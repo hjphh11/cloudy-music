@@ -39,6 +39,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -250,7 +252,7 @@ private fun NeteaseHome(
         ) { tab ->
             when {
                 tab == NeteaseTab.MINE || client == null ->
-                    NeteaseMine(state, onlinePlayback, bottomContentPadding, onLogin, onRefresh, onOpenPlaylist, onOnlinePlayback, onSignOut, onOpenLibrary)
+                    NeteaseMine(state, onlinePlayback, bottomContentPadding, onLogin, onRefresh, onOpenPlaylist, onOnlinePlayback, onSignOut, onOpenLibrary, onOpenSettings, client)
                 tab == NeteaseTab.DISCOVER -> NeteaseDiscover(client, state.account != null, bottomContentPadding, onOpenPlaylist, onPlay)
                 tab == NeteaseTab.CHARTS -> NeteaseCharts(client, bottomContentPadding, onOpenPlaylist)
                 tab == NeteaseTab.SEARCH -> NeteaseSearch(client, bottomContentPadding, currentTrackId, onOpenPlaylist) { songs, index -> onPlay(songs, index, false) }
@@ -271,6 +273,8 @@ private fun NeteaseMine(
     onOnlinePlayback: (Boolean) -> Unit,
     onSignOut: () -> Unit,
     onOpenLibrary: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    client: com.olbyine.music.data.NeteaseClient? = null,
 ) {
     val account = state.account
     val liked = state.playlists.firstOrNull { it.liked }
@@ -299,9 +303,11 @@ private fun NeteaseMine(
                     .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .78f))
                     .padding(16.dp),
             ) {
+                val profile = client?.let { rememberLoad(account.userId) { it.userProfile(account.userId) } }
+                val detail = profile?.first?.value
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val openProfile = LocalNeteaseProfile.current
-                    UrlImage(account.avatarUrl, Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    UrlImage(account.avatarUrl, Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)
                         .clickable { openProfile?.invoke(account.userId) })
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
@@ -313,13 +319,26 @@ private fun NeteaseMine(
                             }
                         }
                         Text(
-                            "${state.playlists.size} 个歌单",
+                            when {
+                                detail != null -> "关注 ${playCountLabel(detail.follows.toLong())} · 粉丝 ${playCountLabel(detail.followers.toLong())}"
+                                state.playlists.isEmpty() -> "正在同步网易云数据…"
+                                else -> "${state.playlists.size} 个歌单"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        val signature = detail?.signature.orEmpty()
+                        if (signature.isNotBlank()) {
+                            Text(
+                                signature,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                    GhostIconButton(Icons.Rounded.Refresh, "刷新", onRefresh, size = 40.dp, iconSize = 20.dp)
-                    GhostIconButton(Icons.AutoMirrored.Rounded.Logout, "退出登录", onSignOut, size = 40.dp, iconSize = 20.dp)
+                    GhostIconButton(Icons.Rounded.Settings, "设置", onOpenSettings, size = 40.dp, iconSize = 20.dp)
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(
@@ -342,6 +361,22 @@ private fun NeteaseMine(
                     OlbyineSwitch(onlinePlayback, onOnlinePlayback)
                 }
                 NeteaseMineShortcuts(account.userId)
+                Spacer(Modifier.height(6.dp))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "刷新同步",
+                        Modifier.clip(CircleShape).clickable(onClick = onRefresh).padding(horizontal = 6.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "退出登录",
+                        Modifier.clip(CircleShape).clickable(onClick = onSignOut).padding(horizontal = 6.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
         if (state.loading && state.playlists.isEmpty()) skeletonCards(6)
@@ -354,8 +389,29 @@ private fun NeteaseMine(
             item(span = { GridItemSpan(maxLineSpan) }, key = "liked") { MotionItem { LikedCard(liked) { onOpenPlaylist(liked) } } }
         }
         if (own.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }, key = "own-title") { Overline("创建的歌单", itemMotion().padding(start = 6.dp, top = 14.dp, bottom = 2.dp)) }
-            itemsIndexed(own, key = { index, it -> "own:$index:${it.id}" }) { _, playlist -> MotionItem { PlaylistTile(playlist) { onOpenPlaylist(playlist) } } }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "own-title") {
+                Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 16.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Overline("我的歌单", Modifier.weight(1f))
+                    val routes = LocalNcmPush.current
+                    if (routes != null) {
+                        Text(
+                            "管理",
+                            Modifier.clip(CircleShape).clickable { routes(NcmRoute.ManagePlaylists) }.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "own") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    itemsIndexed(own, key = { index, it -> "own:$index:${it.id}" }) { _, playlist ->
+                        Box(Modifier.width(138.dp)) {
+                            MotionItem { PlaylistTile(playlist) { onOpenPlaylist(playlist) } }
+                        }
+                    }
+                }
+            }
         }
         if (saved.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "saved-title") { Overline("收藏的歌单", itemMotion().padding(start = 6.dp, top = 14.dp, bottom = 2.dp)) }
