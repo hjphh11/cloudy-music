@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -42,8 +43,13 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Mail
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Whatshot
@@ -63,6 +69,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -216,9 +223,18 @@ internal fun NeteaseCoverCard(playlist: NeteasePlaylistSummary, onClick: () -> U
 }
 
 @Composable
-internal fun NeteaseDiscover(client: NeteaseClient, signedIn: Boolean, bottomPadding: Dp, onOpen: (NeteasePlaylistSummary) -> Unit) {
+internal fun NeteaseDiscover(
+    client: NeteaseClient,
+    signedIn: Boolean,
+    bottomPadding: Dp,
+    onOpen: (NeteasePlaylistSummary) -> Unit,
+    onPlay: (List<NeteaseSong>, Int, Boolean) -> Unit = { _, _, _ -> },
+) {
     val (recommended, retryRecommended) = rememberLoad(signedIn) { if (signedIn) client.recommendedPlaylists() else emptyList() }
+    val (daily, retryDaily) = rememberLoad(signedIn) { if (signedIn) client.dailySongs() else emptyList() }
     val (categories, _) = rememberLoad(Unit) { client.playlistCategories() }
+    val (charts, _) = rememberLoad(Unit) { client.charts() }
+    val (podcasts, _) = rememberLoad(Unit) { client.hotPodcasts() }
     var category by rememberSaveable { mutableStateOf("全部") }
     var showAllCategories by remember { mutableStateOf(false) }
     val square = remember(category) { mutableStateListOf<NeteasePlaylistSummary>() }
@@ -226,6 +242,7 @@ internal fun NeteaseDiscover(client: NeteaseClient, signedIn: Boolean, bottomPad
     var squareError by remember(category) { mutableStateOf<String?>(null) }
     var squareEnd by remember(category) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val push = LocalNcmPush.current
     val loadMore: () -> Unit = {
         if (!squareLoading && !squareEnd) {
             squareLoading = true
@@ -254,26 +271,73 @@ internal fun NeteaseDiscover(client: NeteaseClient, signedIn: Boolean, bottomPad
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        val dailySongs = daily.value.orEmpty()
+        item(span = { GridItemSpan(maxLineSpan) }, key = "hero") {
+            DailyHeroCard(
+                cover = dailySongs.firstOrNull()?.coverUrl,
+                count = dailySongs.size.takeIf { it > 0 } ?: 30,
+                signedIn = signedIn,
+                loading = daily.loading,
+                error = daily.error,
+                onRetry = retryDaily,
+                onOpen = {
+                    onOpen(
+                        NeteasePlaylistSummary(
+                            -1L,
+                            "每日推荐",
+                            dailySongs.firstOrNull()?.coverUrl,
+                            dailySongs.size.takeIf { it > 0 } ?: 30,
+                            "根据你的口味生成",
+                            false,
+                            false,
+                            kind = NeteaseCollectionKind.DAILY,
+                        ),
+                    )
+                },
+                onPlay = { if (dailySongs.isNotEmpty()) onPlay(dailySongs, 0, false) },
+            )
+        }
         if (signedIn) {
-            item(span = { GridItemSpan(maxLineSpan) }, key = "daily") {
-                DailyCard {
-                    onOpen(NeteasePlaylistSummary(-1L, "每日推荐", null, 30, "根据你的口味生成", false, false, kind = NeteaseCollectionKind.DAILY))
+            item(span = { GridItemSpan(maxLineSpan) }, key = "fm") { PersonalFmCard(client, onPlay) }
+        }
+        val picks = recommended.value.orEmpty()
+        if (picks.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "rec-title") { SectionTitle("为你推荐") }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "rec") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    itemsIndexed(picks, key = { index, it -> "$index:${it.id}" }) { _, it -> NeteaseCoverCard(it, { onOpen(it) }, itemMotion().width(138.dp)) }
                 }
             }
-            val picks = recommended.value.orEmpty()
-            if (picks.isNotEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "rec-title") { Overline("为你推荐", Modifier.padding(start = 6.dp, top = 12.dp, bottom = 2.dp)) }
-                item(span = { GridItemSpan(maxLineSpan) }, key = "rec") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        itemsIndexed(picks, key = { index, it -> "$index:${it.id}" }) { _, it -> NeteaseCoverCard(it, { onOpen(it) }, itemMotion().width(138.dp)) }
+        } else if (recommended.error != null) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "rec-error") { LoadingOrError(false, recommended.error, retryRecommended) }
+        }
+
+        val hot = podcasts.value.orEmpty()
+        if (hot.isNotEmpty() && push != null) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "pod-title") {
+                SectionTitle("播客", "更多") { push(NcmRoute.Podcasts) }
+            }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "pod") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    items(hot.take(12), key = { "pod:${it.id}" }) { podcast ->
+                        PodcastMiniCard(podcast, { push(NcmRoute.Podcast(podcast)) }, itemMotion().width(140.dp))
                     }
                 }
-            } else if (recommended.error != null) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "rec-error") { LoadingOrError(false, recommended.error, retryRecommended) }
             }
         }
+
+        val tops = charts.value.orEmpty().take(3)
+        if (tops.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "chart-title") { SectionTitle("排行榜") }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "chart-row") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    items(tops, key = { "top:${it.id}" }) { chart -> NeteaseCoverCard(chart, { onOpen(chart) }, itemMotion().width(138.dp)) }
+                }
+            }
+        }
+
         item(span = { GridItemSpan(maxLineSpan) }, key = "square-title") {
-            Row(Modifier.fillMaxWidth().padding(start = 6.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 18.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Overline("歌单广场", Modifier.weight(1f))
                 if (categories.value != null) {
                     Text(
@@ -320,6 +384,215 @@ internal fun NeteaseDiscover(client: NeteaseClient, signedIn: Boolean, bottomPad
 }
 
 @Composable
+private fun SectionTitle(text: String, trailing: String? = null, onTrailing: () -> Unit = {}) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 16.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Overline(text, Modifier.weight(1f))
+        if (trailing != null) {
+            Text(
+                trailing,
+                Modifier.clip(CircleShape).clickable(onClick = onTrailing).padding(horizontal = 10.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+/** 台历大卡：封面模糊铺底 + 红色渐变遮罩 + 日历牌。 */
+@Composable
+private fun DailyHeroCard(
+    cover: String?,
+    count: Int,
+    signedIn: Boolean,
+    loading: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
+    onOpen: () -> Unit,
+    onPlay: () -> Unit,
+) {
+    val day = remember { SimpleDateFormat("dd", Locale.CHINA).format(Date()) }
+    val month = remember { SimpleDateFormat("M月", Locale.CHINA).format(Date()) }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp)
+            .height(172.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .clickable(onClick = if (error != null) onRetry else onOpen),
+    ) {
+        if (cover != null) {
+            UrlImage(
+                "$cover?param=600y600",
+                Modifier.fillMaxSize().graphicsLayer { scaleX = 1.15f; scaleY = 1.15f }.blur(34.dp),
+            )
+        }
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    listOf(
+                        NeteaseRed.copy(alpha = .96f),
+                        NeteaseRed.copy(alpha = .78f),
+                        Color(0xFF5C1230).copy(alpha = .90f),
+                    ),
+                ),
+            ),
+        )
+        Row(Modifier.fillMaxSize().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier.width(74.dp).fillMaxHeight().clip(RoundedCornerShape(18.dp))
+                    .background(Color.White.copy(alpha = .16f)),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(month, fontSize = 12.sp, color = Color.White.copy(alpha = .85f), fontWeight = FontWeight.Medium)
+                Text(day, fontSize = 34.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                Text("每日", fontSize = 10.sp, color = Color.White.copy(alpha = .7f))
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text("每日推荐", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    when {
+                        !signedIn -> "登录后每天 6:00 为你更新"
+                        error != null -> error
+                        loading -> "正在挑选今天的歌…"
+                        else -> "$count 首 · 根据你的口味生成"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = .85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(12.dp))
+                if (signedIn && error == null) {
+                    Row(
+                        Modifier.height(34.dp).clip(CircleShape).background(Color.White).clickable(onClick = onPlay).padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StyledIcon(Icons.Rounded.PlayArrow, null, Modifier.size(18.dp), tint = NeteaseRed)
+                        Spacer(Modifier.width(6.dp))
+                        Text("播放全部", style = MaterialTheme.typography.labelLarge, color = NeteaseRed, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 私人 FM：一首一首往下听，垃圾桶换掉当前这首。 */
+@Composable
+private fun PersonalFmCard(client: NeteaseClient, onPlay: (List<NeteaseSong>, Int, Boolean) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val tracks = remember { mutableStateListOf<NeteaseSong>() }
+    var index by remember { mutableStateOf(0) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val colors = MaterialTheme.colorScheme
+    val reload: suspend () -> Unit = {
+        loading = true
+        error = null
+        try {
+            val next = client.personalFm()
+            if (next.isEmpty()) {
+                error = "私人 FM 暂时没有内容"
+            } else {
+                tracks.clear()
+                tracks += next
+                index = 0
+            }
+        } catch (failure: Throwable) {
+            if (failure is CancellationException) throw failure
+            error = failure.message ?: "加载失败"
+        }
+        loading = false
+    }
+    LaunchedEffect(Unit) { if (tracks.isEmpty()) reload() }
+    val current = tracks.getOrNull(index)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(Brush.linearGradient(listOf(colors.primary.copy(alpha = .14f), colors.surfaceContainer.copy(alpha = .66f))))
+            .clickable { if (current != null) onPlay(tracks.toList(), index, false) }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(colors.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (current != null) {
+                UrlImage(current.coverUrl, Modifier.fillMaxSize())
+            } else {
+                StyledIcon(Icons.Rounded.Radio, null, Modifier.size(24.dp), tint = colors.primary)
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("私人 FM", style = MaterialTheme.typography.labelMedium, color = colors.primary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(2.dp))
+            val line = current?.title ?: error ?: if (loading) "正在为你挑选…" else "点一下开始"
+            Text(
+                line,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val sub = current?.artist
+            if (sub != null) {
+                Text(sub, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        GhostIconButton(
+            Icons.Rounded.DeleteOutline,
+            "不喜欢这首",
+            {
+                val song = current ?: return@GhostIconButton
+                scope.launch {
+                    runCatching { client.fmTrash(song.id) }
+                    if (index + 1 < tracks.size) index++ else reload()
+                }
+            },
+            enabled = current != null,
+            size = 38.dp,
+            iconSize = 19.dp,
+        )
+        GhostIconButton(
+            Icons.Rounded.Refresh,
+            "换一批",
+            { scope.launch { reload() } },
+            size = 38.dp,
+            iconSize = 19.dp,
+        )
+    }
+}
+
+@Composable
+private fun PodcastMiniCard(podcast: NeteaseClient.Podcast, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(6.dp)) {
+        UrlImage(
+            podcast.coverUrl,
+            Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        )
+        Text(podcast.name, Modifier.padding(start = 2.dp, top = 7.dp), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            listOfNotNull(podcast.host.takeIf(String::isNotBlank), podcast.programCount.takeIf { it > 0 }?.let { "$it 期" }).joinToString(" · "),
+            Modifier.padding(start = 2.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+
+@Composable
 private fun FlowChips(names: List<String>, selected: String, onSelect: (String) -> Unit) {
     androidx.compose.foundation.layout.FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -341,50 +614,113 @@ private fun FlowChips(names: List<String>, selected: String, onSelect: (String) 
 }
 
 @Composable
-private fun DailyCard(onClick: () -> Unit) {
-    val day = remember { SimpleDateFormat("dd", Locale.CHINA).format(Date()) }
-    Row(
-        Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(24.dp))
-            .background(Brush.linearGradient(listOf(NeteaseRed, Color(0xFFB0213A))))
-            .clickable(onClick = onClick)
-            .padding(18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
-            Text(day, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        }
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text("每日推荐", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.SemiBold)
-            Text("根据你的口味，每天 6:00 更新", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = .85f))
-        }
-    }
-}
-
-@Composable
 internal fun NeteaseCharts(client: NeteaseClient, bottomPadding: Dp, onOpen: (NeteasePlaylistSummary) -> Unit) {
     val (charts, retry) = rememberLoad(Unit) { client.charts() }
     val list = charts.value.orEmpty()
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(140.dp),
+        columns = GridCells.Adaptive(120.dp),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = bottomPadding + 24.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (list.isEmpty()) {
             if (charts.loading) skeletonCards(8)
             else item(span = { GridItemSpan(maxLineSpan) }, key = "state") { LoadingOrError(charts.loading, charts.error, retry) }
         } else {
-            item(span = { GridItemSpan(maxLineSpan) }, key = "official") { Overline("官方榜", itemMotion().padding(start = 6.dp, top = 6.dp)) }
-            itemsIndexed(list.take(4), key = { _, it -> "o${it.id}" }) { _, chart -> NeteaseCoverCard(chart, { onOpen(chart) }, itemMotion()) }
-            item(span = { GridItemSpan(maxLineSpan) }, key = "more") { Overline("精选榜与全球榜", itemMotion().padding(start = 6.dp, top = 14.dp)) }
-            itemsIndexed(list.drop(4), key = { _, it -> "m${it.id}" }) { _, chart -> NeteaseCoverCard(chart, { onOpen(chart) }, itemMotion()) }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "preview-title") { SectionTitle("榜单速览") }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "preview") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(list.take(6), key = { "pv:${it.id}" }) { chart ->
+                        ChartPreviewCard(client, chart, { onOpen(chart) }, itemMotion())
+                    }
+                }
+            }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "all-title") { SectionTitle("全部榜单") }
+            itemsIndexed(list, key = { _, it -> "c${it.id}" }) { _, chart -> NeteaseCoverCard(chart, { onOpen(chart) }, itemMotion()) }
         }
     }
 }
 
-private enum class SearchType(val label: String, val code: Int) { SONG("单曲", 1), PLAYLIST("歌单", 1000), ALBUM("专辑", 10), ARTIST("歌手", 100) }
+/** 榜单卡：封面 + 榜名 + 更新频率 + 前三首。曲目按需加载，卡片不进入视口就不会请求。 */
+@Composable
+private fun ChartPreviewCard(client: NeteaseClient, chart: NeteasePlaylistSummary, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val (songs, retry) = rememberLoad(chart.id) { client.playlistSongs(chart.id) }
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier.width(236.dp).height(172.dp).clip(RoundedCornerShape(22.dp))
+            .background(colors.surfaceContainer.copy(alpha = .72f))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            UrlImage(
+                chart.coverUrl?.let { "$it?param=200y200" },
+                Modifier.size(54.dp).clip(RoundedCornerShape(14.dp)).background(colors.surfaceContainerHighest),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(chart.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    chart.note.ifBlank { "实时更新" },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        val top = songs.value.orEmpty().take(3)
+        when {
+            top.isNotEmpty() -> top.forEachIndexed { index, song ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${index + 1}",
+                        Modifier.width(16.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (index == 0) colors.primary else colors.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(song.title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            songs.loading -> repeat(3) {
+                Box(
+                    Modifier.fillMaxWidth(if (it == 2) .6f else .9f).padding(vertical = 4.dp).height(10.dp)
+                        .clip(RoundedCornerShape(5.dp)).background(colors.onSurface.copy(alpha = .07f)),
+                )
+            }
+            else -> Text(
+                "曲目加载失败，点击重试",
+                Modifier.fillMaxWidth().clickable(onClick = retry),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private enum class SearchType(val label: String, val code: Int) {
+    SONG("单曲", 1),
+    ARTIST("歌手", 100),
+    ALBUM("专辑", 10),
+    PLAYLIST("歌单", 1000),
+    MV("MV", 1004),
+    PODCAST("播客", 1009),
+}
+
+/** 搜索历史落在 SharedPreferences，和「清空」「单条删」都不走网络。 */
+private object SearchHistory {
+    private const val FILE = "olbyine_search"
+    private const val KEY = "history"
+
+    fun read(context: android.content.Context): List<String> = context.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE)
+        .getString(KEY, null).orEmpty().split('\u0001').filter(String::isNotBlank)
+
+    fun write(context: android.content.Context, values: List<String>) {
+        context.getSharedPreferences(FILE, android.content.Context.MODE_PRIVATE).edit().putString(KEY, values.joinToString("\u0001")).apply()
+    }
+}
 
 @Composable
 internal fun NeteaseSearch(
@@ -398,14 +734,18 @@ internal fun NeteaseSearch(
     var keyword by rememberSaveable { mutableStateOf("") }
     var type by rememberSaveable { mutableStateOf(SearchType.SONG) }
     val (hot, _) = rememberLoad(Unit) { client.hotSearches() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val history = remember { mutableStateListOf<String>().also { it += SearchHistory.read(context) } }
     val songs = remember(keyword, type) { mutableStateListOf<NeteaseSong>() }
     val collections = remember(keyword, type) { mutableStateListOf<NeteasePlaylistSummary>() }
     val artists = remember(keyword, type) { mutableStateListOf<NeteaseArtist>() }
+    val mvs = remember(keyword, type) { mutableStateListOf<com.olbyine.music.data.NeteaseMvSummary>() }
+    val podcasts = remember(keyword, type) { mutableStateListOf<NeteaseClient.Podcast>() }
     var loading by remember(keyword, type) { mutableStateOf(false) }
     var error by remember(keyword, type) { mutableStateOf<String?>(null) }
     var total by remember(keyword, type) { mutableStateOf(-1) }
     val scope = rememberCoroutineScope()
-    val count = songs.size + collections.size + artists.size
+    val count = songs.size + collections.size + artists.size + mvs.size + podcasts.size
     val loadMore: () -> Unit = {
         if (keyword.isNotBlank() && !loading && (total < 0 || count < total)) {
             loading = true
@@ -417,7 +757,9 @@ internal fun NeteaseSearch(
                     songs += page.songs
                     collections += page.playlists + page.albums
                     artists += page.artists
-                    if (page.songs.isEmpty() && page.playlists.isEmpty() && page.albums.isEmpty() && page.artists.isEmpty()) total = count
+                    mvs += page.mvs
+                    podcasts += page.podcasts
+                    if (page.songs.isEmpty() && page.playlists.isEmpty() && page.albums.isEmpty() && page.artists.isEmpty() && page.mvs.isEmpty() && page.podcasts.isEmpty()) total = count
                 } catch (failure: Throwable) {
                     if (failure is CancellationException) throw failure
                     error = failure.message ?: "搜索失败"
@@ -427,7 +769,18 @@ internal fun NeteaseSearch(
         }
     }
     LaunchedEffect(keyword, type) { loadMore() }
-    val submit: (String) -> Unit = { query -> input = query; keyword = query.trim() }
+    val push = LocalNcmPush.current
+    val submit: (String) -> Unit = { query ->
+        val trimmed = query.trim()
+        input = query
+        keyword = trimmed
+        if (trimmed.isNotBlank()) {
+            history.remove(trimmed)
+            history.add(0, trimmed)
+            while (history.size > 12) history.removeAt(history.lastIndex)
+            SearchHistory.write(context, history)
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
@@ -437,15 +790,86 @@ internal fun NeteaseSearch(
             PillButton("搜索", { submit(input) }, enabled = input.isNotBlank(), height = 42.dp)
         }
         if (keyword.isBlank()) {
-            val words = hot.value.orEmpty()
-            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    StyledIcon(Icons.Rounded.Whatshot, null, Modifier.size(18.dp), tint = NeteaseRed)
-                    Spacer(Modifier.width(6.dp))
-                    Text("热搜", style = MaterialTheme.typography.titleSmall)
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding + 24.dp),
+            ) {
+                if (history.isNotEmpty()) {
+                    item(key = "history-title") {
+                        Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("搜索历史", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "清空",
+                                Modifier.clip(CircleShape).clickable {
+                                    history.clear()
+                                    SearchHistory.write(context, emptyList())
+                                }.padding(horizontal = 8.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    item(key = "history") {
+                        androidx.compose.foundation.layout.FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            history.forEach { word ->
+                                Row(
+                                    Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = .07f))
+                                        .clickable { submit(word) }
+                                        .padding(start = 14.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(word, style = MaterialTheme.typography.labelLarge)
+                                    Spacer(Modifier.width(4.dp))
+                                    StyledIcon(
+                                        Icons.Rounded.Close,
+                                        "删除",
+                                        Modifier.size(14.dp).clickable {
+                                            history.remove(word)
+                                            SearchHistory.write(context, history)
+                                        },
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
-                FlowChips(words, "", submit)
+                item(key = "hot-title") {
+                    Row(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        StyledIcon(Icons.Rounded.Whatshot, null, Modifier.size(18.dp), tint = NeteaseRed)
+                        Spacer(Modifier.width(6.dp))
+                        Text("热搜榜", style = MaterialTheme.typography.titleSmall)
+                    }
+                }
+                val words = hot.value.orEmpty().take(20)
+                if (words.isEmpty()) {
+                    item(key = "hot-loading") {
+                        if (hot.loading) LoadingOrError(true, null, {}) else Text(
+                            hot.error ?: "热搜暂时取不到",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                itemsIndexed(words, key = { index, it -> "hot:$index:$it" }) { index, word ->
+                    Row(
+                        itemMotion().fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { submit(word) }
+                            .padding(horizontal = 6.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${index + 1}",
+                            Modifier.width(26.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (index < 3) NeteaseRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (index < 3) FontWeight.Bold else FontWeight.Normal,
+                        )
+                        Text(word, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
             return@Column
         }
@@ -471,6 +895,44 @@ internal fun NeteaseSearch(
                         Column(Modifier.weight(1f)) {
                             Text(artist.name, style = MaterialTheme.typography.titleSmall)
                             Text("${artist.albumCount} 张专辑", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                SearchType.MV -> itemsIndexed(mvs, key = { index, it -> "mv$index:${it.id}" }) { index, mv ->
+                    if (index >= mvs.size - 6) LaunchedEffect(mvs.size) { loadMore() }
+                    Row(
+                        itemMotion().fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { push?.invoke(NcmRoute.Mv(mv.id)) }.padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        UrlImage(mv.coverUrl, Modifier.width(96.dp).height(54.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(mv.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                listOfNotNull(mv.artist.takeIf(String::isNotBlank), mv.playCount.takeIf { it > 0 }?.let { "播放 " + playCountLabel(it) }).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+                SearchType.PODCAST -> itemsIndexed(podcasts, key = { index, it -> "pd$index:${it.id}" }) { index, podcast ->
+                    if (index >= podcasts.size - 6) LaunchedEffect(podcasts.size) { loadMore() }
+                    Row(
+                        itemMotion().fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { push?.invoke(NcmRoute.Podcast(podcast)) }.padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        UrlImage(podcast.coverUrl, Modifier.size(56.dp).clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest))
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(podcast.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                listOfNotNull(podcast.host.takeIf(String::isNotBlank), podcast.programCount.takeIf { it > 0 }?.let { "$it 期" }).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
                         }
                     }
                 }

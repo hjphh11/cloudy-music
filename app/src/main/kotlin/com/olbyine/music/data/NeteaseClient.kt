@@ -144,11 +144,15 @@ data class NeteaseListenRoom(
 
 data class NeteaseArtist(val id: Long, val name: String, val pictureUrl: String?, val albumCount: Int)
 
+data class NeteaseMvSummary(val id: Long, val name: String, val coverUrl: String?, val artist: String, val playCount: Long)
+
 data class NeteaseSearchResult(
     val songs: List<NeteaseSong> = emptyList(),
     val playlists: List<NeteasePlaylistSummary> = emptyList(),
     val albums: List<NeteasePlaylistSummary> = emptyList(),
     val artists: List<NeteaseArtist> = emptyList(),
+    val mvs: List<NeteaseMvSummary> = emptyList(),
+    val podcasts: List<NeteaseClient.Podcast> = emptyList(),
     val total: Int = 0,
 )
 
@@ -611,6 +615,22 @@ class NeteaseClient(context: Context) {
                 total = result.optInt("artistCount"),
             )
             1000 -> NeteaseSearchResult(playlists = result.optJSONArray("playlists").objects().map(::playlistSummary), total = result.optInt("playlistCount"))
+            1004 -> NeteaseSearchResult(
+                mvs = result.optJSONArray("mvs").objects().map { row ->
+                    NeteaseMvSummary(
+                        id = row.optLong("id"),
+                        name = row.optString("name"),
+                        coverUrl = row.optString("cover").https()?.let { "$it?param=300y300" },
+                        artist = row.optJSONArray("artists").objects().joinToString(" / ") { it.optString("name") },
+                        playCount = row.optLong("playCount"),
+                    )
+                },
+                total = result.optInt("mvCount"),
+            )
+            1009 -> NeteaseSearchResult(
+                podcasts = result.optJSONArray("djRadios").objects().map(::podcast),
+                total = result.optInt("djRadiosCount"),
+            )
             else -> NeteaseSearchResult(
                 songs = result.optJSONArray("songs").objects().mapNotNull { song(it, it.optJSONObject("privilege")) },
                 total = result.optInt("songCount"),
@@ -681,6 +701,17 @@ class NeteaseClient(context: Context) {
         val privileges = HashMap<Long, JSONObject>()
         data.optJSONArray("privileges").objects().forEach { privileges[it.optLong("id")] = it }
         data.optJSONArray("dailySongs").objects().mapNotNull { row -> song(row, row.optJSONObject("privilege") ?: privileges[row.optLong("id")]) }
+    }
+
+    /** 私人 FM：一次返回若干首，垃圾桶用 [fmTrash]。未登录会报错。 */
+    suspend fun personalFm(): List<NeteaseSong> = withContext(Dispatchers.IO) {
+        eapi("/api/v1/radio/get", JSONObject()).optJSONArray("data").objects()
+            .mapNotNull { row -> song(row, row.optJSONObject("privilege")) }
+    }
+
+    suspend fun fmTrash(songId: Long, alg: String = "rt", time: Int = 25) = withContext(Dispatchers.IO) {
+        eapi("/api/radio/trash/add?alg=$alg&songId=$songId&time=$time", JSONObject())
+        Unit
     }
 
     suspend fun albumSongs(id: Long): List<NeteaseSong> = withContext(Dispatchers.IO) {

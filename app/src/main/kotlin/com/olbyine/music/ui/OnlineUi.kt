@@ -202,12 +202,40 @@ private fun NeteaseHome(
         NeteaseTab.SEARCH -> "搜索"
         NeteaseTab.MESSAGES -> "消息"
     }
+    val calendar = remember {
+        val now = java.util.Calendar.getInstance()
+        val greeting = when (now.get(java.util.Calendar.HOUR_OF_DAY)) {
+            in 0..4 -> "夜深了"
+            in 5..8 -> "早上好"
+            in 9..11 -> "上午好"
+            in 12..13 -> "中午好"
+            in 14..17 -> "下午好"
+            in 18..22 -> "晚上好"
+            else -> "夜深了"
+        }
+        greeting to java.text.SimpleDateFormat("M 月 d 日 · EEEE", java.util.Locale.CHINA).format(now.time)
+    }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.statusBarsPadding().padding(start = 20.dp, top = 18.dp, end = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onBackground, maxLines = 1)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (tab == NeteaseTab.DISCOVER) calendar.first else title,
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                )
+                if (tab == NeteaseTab.DISCOVER) {
+                    Text(
+                        calendar.second,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
             GhostIconButton(Icons.Rounded.Mail, "消息", {
                 haptics.tick(HapticArea.MENUS)
                 tab = NeteaseTab.MESSAGES
@@ -223,7 +251,7 @@ private fun NeteaseHome(
             when {
                 tab == NeteaseTab.MINE || client == null ->
                     NeteaseMine(state, onlinePlayback, bottomContentPadding, onLogin, onRefresh, onOpenPlaylist, onOnlinePlayback, onSignOut, onOpenLibrary)
-                tab == NeteaseTab.DISCOVER -> NeteaseDiscover(client, state.account != null, bottomContentPadding, onOpenPlaylist)
+                tab == NeteaseTab.DISCOVER -> NeteaseDiscover(client, state.account != null, bottomContentPadding, onOpenPlaylist, onPlay)
                 tab == NeteaseTab.CHARTS -> NeteaseCharts(client, bottomContentPadding, onOpenPlaylist)
                 tab == NeteaseTab.SEARCH -> NeteaseSearch(client, bottomContentPadding, currentTrackId, onOpenPlaylist) { songs, index -> onPlay(songs, index, false) }
                 else -> NeteaseMessages(client, state.account != null, bottomContentPadding, onLogin)
