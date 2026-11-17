@@ -1531,29 +1531,74 @@ private fun OlbyineAppContent(state: MainUiState, lyrics: LyricsDocument, viewMo
         )
     }
     appUpdate?.let { update ->
+        val download by viewModel.updateDownload.collectAsState()
+        val downloading = download as? com.olbyine.music.data.UpdateDownload.Downloading
+        val ready = download is com.olbyine.music.data.UpdateDownload.Ready
+        val failed = download as? com.olbyine.music.data.UpdateDownload.Failed
         OlbyineDialog(
             onDismissRequest = viewModel::dismissAppUpdate,
             title = "Cloudy 有新版本 ${update.version}",
             confirmButton = {
-                GlassTextButton(onClick = {
-                    val target = update.apkUrl ?: update.pageUrl
-                    runCatching {
-                        context.startActivity(
-                            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(target))
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
+                when {
+                    downloading != null -> GlassTextButton(onClick = viewModel::cancelAppUpdateDownload) { Text("取消") }
+                    ready -> GlassTextButton(onClick = viewModel::installAppUpdate) { Text("安装") }
+                    else -> GlassTextButton(onClick = { viewModel.downloadAppUpdate(update) }) {
+                        Text(if (failed != null) "重试" else "立即更新")
                     }
-                    viewModel.dismissAppUpdate()
-                }) { Text("前往下载") }
+                }
             },
             dismissButton = { GlassTextButton(onClick = viewModel::dismissAppUpdate) { Text("稍后") } },
         ) {
-            Column(Modifier.heightIn(max = 320.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            Column(Modifier.heightIn(max = 340.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 Text(
-                    update.notes.ifBlank { "这个版本没有附更新说明，点「前往下载」查看详情。" },
+                    update.notes.ifBlank { "这个版本没有附更新说明。" },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
+                when {
+                    downloading != null -> {
+                        Spacer(Modifier.height(16.dp))
+                        Box(
+                            Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                        ) {
+                            Box(
+                                Modifier.fillMaxWidth(downloading.progress.coerceIn(0f, 1f)).fillMaxHeight()
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(MaterialTheme.colorScheme.primary),
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            buildString {
+                                append(if (downloading.total > 0) "${(downloading.progress * 100).toInt()}% · " else "")
+                                append("${downloading.bytes / 1048576} MB")
+                                if (downloading.total > 0) append(" / ${downloading.total / 1048576} MB")
+                                append(" · 下载中，别退出应用")
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    ready -> {
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            "安装包已就绪，点右上角「安装」继续。系统会问一次是否允许 Cloudy 安装应用。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    failed != null -> {
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            failed.message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
         }
     }

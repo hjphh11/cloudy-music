@@ -302,6 +302,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val appUpdate: StateFlow<com.olbyine.music.data.AppUpdate?> = _appUpdate
     private val _updateChecking = MutableStateFlow(false)
     val updateChecking: StateFlow<Boolean> = _updateChecking
+    private val _updateDownload = MutableStateFlow<com.olbyine.music.data.UpdateDownload>(com.olbyine.music.data.UpdateDownload.Idle)
+    val updateDownload: StateFlow<com.olbyine.music.data.UpdateDownload> = _updateDownload
+    private var updateDownloadJob: Job? = null
+    private var lastProgressAt = 0L
     private val _onlineReveal = MutableStateFlow<OnlineReveal?>(null)
     val onlineReveal: StateFlow<OnlineReveal?> = _onlineReveal
     private val _collectionResume = MutableStateFlow<Map<String, CollectionResumePoint>>(emptyMap())
@@ -1183,11 +1187,75 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissAppUpdate() {
+        updateDownloadJob?.cancel()
+        updateDownloadJob = null
+        _updateDownload.value = com.olbyine.music.data.UpdateDownload.Idle
         _appUpdate.value?.version?.takeIf(String::isNotBlank)?.let { version ->
             // 记下用户跳过的版本，同一个版本下次启动不再打扰
             settingsRepository.setSkippedUpdateVersion(version)
         }
         _appUpdate.value = null
+    }
+
+    /** 在 App 内下载新版本；清单里没给直链时才退回浏览器打开下载页。 */
+    fun downloadAppUpdate(update: com.olbyine.music.data.AppUpdate) {
+        val url = update.apkUrl
+        if (url.isNullOrBlank()) {
+            runCatching {
+                app.startActivity(
+                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(update.pageUrl))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+            return
+        }
+        // 上次已经下完的包直接拿来装
+        app.updateInstaller.existing(update.version)?.let { file ->
+            _updateDownload.value = com.olbyine.music.data.UpdateDownload.Ready(file.absolutePath)
+            return
+        }
+        updateDownloadJob?.cancel()
+        _updateDownload.value = com.olbyine.music.data.UpdateDownload.Downloading(0f, 0, 0)
+        lastProgressAt = 0L
+        updateDownloadJob = viewModelScope.launch {
+            try {
+                val file = app.updateInstaller.download(url, update.version) { progress, read, total ->
+                    // 24MB 的包按 64KB 回调有近 400 次，节流到 8Hz，否则弹窗一直重组
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (read >= total || now - lastProgressAt > 120) {
+                        lastProgressAt = now
+                        _updateDownload.value = com.olbyine.music.data.UpdateDownload.Downloading(progress, read, total)
+                    }
+                }
+                app.updateInstaller.purgeExcept(update.version)
+                _updateDownload.value = com.olbyine.music.data.UpdateDownload.Ready(file.absolutePath)
+            } catch (error: CancellationException) {
+                _updateDownload.value = com.olbyine.music.data.UpdateDownload.Idle
+                throw error
+            } catch (error: Throwable) {
+                _updateDownload.value =
+                    com.olbyine.music.data.UpdateDownload.Failed(error.message ?: "下载失败，请检查网络")
+            }
+        }
+    }
+
+    fun cancelAppUpdateDownload() {
+        updateDownloadJob?.cancel()
+        updateDownloadJob = null
+        _updateDownload.value = com.olbyine.music.data.UpdateDownload.Idle
+    }
+
+    /** 把下好的包交给系统安装器；缺「安装未知应用」权限就先带用户去开。 */
+    fun installAppUpdate() {
+        val state = _updateDownload.value
+        if (state !is com.olbyine.music.data.UpdateDownload.Ready) return
+        if (!app.updateInstaller.canInstall()) {
+            message.value = "请允许 Cloudy 安装应用，回来再点一次「安装」"
+            app.updateInstaller.openInstallPermission()
+            return
+        }
+        runCatching { app.updateInstaller.install(java.io.File(state.path)) }
+            .onFailure { message.value = "打不开安装程序：${it.message ?: "未知原因"}" }
     }
 
     fun checkForUpdates(manual: Boolean = false) {
@@ -1200,6 +1268,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val skipped = settingsRepository.settings.value.skippedUpdateVersion
                 val show = update != null && (manual || update.version != skipped)
                 _appUpdate.value = if (show) update else null
+                if (show && update != null) {
+                    val existing = app.updateInstaller.existing(update.version)
+                    _updateDownload.value = existing
+                        ?.let { com.olbyine.music.data.UpdateDownload.Ready(it.absolutePath) }
+                        ?: com.olbyine.music.data.UpdateDownload.Idle
+                }
                 if (manual) message.value = if (update == null) "已是最新版本" else "发现新版本 ${update.version}"
             }.onFailure { error ->
                 if (error is CancellationException) throw error

@@ -35,6 +35,7 @@ class OlbyineApplication : Application() {
         private set
     val appScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
     val updateChecker by lazy { com.olbyine.music.data.UpdateChecker() }
+    val updateInstaller by lazy { com.olbyine.music.data.AppUpdateInstaller(this) }
     val neteaseDownloader by lazy { com.olbyine.music.data.NeteaseDownloader(this) }
     val downloadRecords by lazy { com.olbyine.music.data.DownloadRecords(this) }
     val downloadNotifier by lazy { com.olbyine.music.data.DownloadNotifier(this) }
