@@ -2,6 +2,7 @@
 
 package com.olbyine.music.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,10 +48,12 @@ import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Whatshot
@@ -69,10 +73,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.font.FontWeight
@@ -271,30 +276,14 @@ internal fun NeteaseDiscover(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        val dailySongs = daily.value.orEmpty()
         item(span = { GridItemSpan(maxLineSpan) }, key = "hero") {
-            DailyHeroCard(
-                cover = dailySongs.firstOrNull()?.coverUrl,
-                count = dailySongs.size.takeIf { it > 0 } ?: 30,
+            DailyDeckCard(
+                client = client,
+                daily = daily,
+                retryDaily = retryDaily,
                 signedIn = signedIn,
-                loading = daily.loading,
-                error = daily.error,
-                onRetry = retryDaily,
-                onOpen = {
-                    onOpen(
-                        NeteasePlaylistSummary(
-                            -1L,
-                            "每日推荐",
-                            dailySongs.firstOrNull()?.coverUrl,
-                            dailySongs.size.takeIf { it > 0 } ?: 30,
-                            "根据你的口味生成",
-                            false,
-                            false,
-                            kind = NeteaseCollectionKind.DAILY,
-                        ),
-                    )
-                },
-                onPlay = { if (dailySongs.isNotEmpty()) onPlay(dailySongs, 0, false) },
+                onOpen = onOpen,
+                onPlay = onPlay,
             )
         }
         if (signedIn) {
@@ -401,85 +390,409 @@ private fun SectionTitle(text: String, trailing: String? = null, onTrailing: () 
     }
 }
 
-/** 台历大卡：封面模糊铺底 + 红色渐变遮罩 + 日历牌。 */
-@Composable
-private fun DailyHeroCard(
-    cover: String?,
-    count: Int,
-    signedIn: Boolean,
-    loading: Boolean,
-    error: String?,
-    onRetry: () -> Unit,
-    onOpen: () -> Unit,
-    onPlay: () -> Unit,
+/** 叠卡大卡：当前这张压在顶上，下面露两张卡边；右侧竖排切卡，底部条翻到下一张。 */
+private enum class DeckTab(
+    val chip: String,
+    val title: String,
+    val hint: String,
+    val start: Color,
+    val mid: Color,
+    val end: Color,
+    val deep: Color,
 ) {
-    val day = remember { SimpleDateFormat("dd", Locale.CHINA).format(Date()) }
-    val month = remember { SimpleDateFormat("M月", Locale.CHINA).format(Date()) }
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 6.dp)
-            .height(172.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .clickable(onClick = if (error != null) onRetry else onOpen),
-    ) {
-        if (cover != null) {
-            UrlImage(
-                "$cover?param=600y600",
-                Modifier.fillMaxSize().graphicsLayer { scaleX = 1.15f; scaleY = 1.15f }.blur(34.dp),
-            )
-        }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(
-                    listOf(
-                        NeteaseRed.copy(alpha = .96f),
-                        NeteaseRed.copy(alpha = .78f),
-                        Color(0xFF5C1230).copy(alpha = .90f),
-                    ),
-                ),
-            ),
-        )
-        Row(Modifier.fillMaxSize().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(
-                Modifier.width(74.dp).fillMaxHeight().clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = .16f)),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(month, fontSize = 12.sp, color = Color.White.copy(alpha = .85f), fontWeight = FontWeight.Medium)
-                Text(day, fontSize = 34.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                Text("每日", fontSize = 10.sp, color = Color.White.copy(alpha = .7f))
+    DAILY("日推", "每日推荐", "每天 6:00 更新", Color(0xFF2B2519), Color(0xFF6B5530), Color(0xFF8C6B37), Color(0xFF232018)),
+    STYLE("风格", "风格推荐", "按你的口味挑一张歌单", Color(0xFF241630), Color(0xFF4E2C68), Color(0xFF7B4A9C), Color(0xFF1C1224)),
+    RADAR("雷达", "私人雷达", "根据口味实时生成", Color(0xFF0F2130), Color(0xFF20475F), Color(0xFF2E7A9B), Color(0xFF0C1A23)),
+    FM("FM", "私人 FM", "无限续播，随听随换", Color(0xFF2A1414), Color(0xFF5E2626), Color(0xFF96392F), Color(0xFF20100F)),
+}
+
+private val deckTabs = DeckTab.entries
+
+/** 网易云「私人雷达」歌单 id，取不到时回退到推荐歌单。 */
+private const val RADAR_PLAYLIST_ID = 3136952023L
+
+private class DeckPayload(
+    val songs: List<NeteaseSong>,
+    val summary: NeteasePlaylistSummary?,
+    val note: String,
+)
+
+@Composable
+private fun DailyDeckCard(
+    client: NeteaseClient,
+    daily: Loaded<List<NeteaseSong>>,
+    retryDaily: () -> Unit,
+    signedIn: Boolean,
+    onOpen: (NeteasePlaylistSummary) -> Unit,
+    onPlay: (List<NeteaseSong>, Int, Boolean) -> Unit,
+) {
+    var tab by rememberSaveable { mutableStateOf(DeckTab.DAILY) }
+    var showSheet by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+    val dailySongs = daily.value.orEmpty()
+
+    val (payload, retryPayload) = rememberLoad(tab, signedIn) {
+        if (!signedIn || tab == DeckTab.DAILY) return@rememberLoad null
+        when (tab) {
+            DeckTab.FM -> DeckPayload(client.personalFm(), null, "私人 FM")
+            DeckTab.RADAR -> {
+                val radar = try {
+                    client.playlistSongs(RADAR_PLAYLIST_ID)
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    emptyList()
+                }
+                if (radar.isNotEmpty()) {
+                    DeckPayload(radar, null, "私人雷达")
+                } else {
+                    val pick = client.recommendedPlaylists().firstOrNull() ?: return@rememberLoad null
+                    DeckPayload(client.playlistSongs(pick.id), pick, pick.note.ifBlank { "私人雷达" })
+                }
             }
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text("每日推荐", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
-                Text(
+            DeckTab.STYLE -> {
+                val pick = client.recommendedPlaylists().firstOrNull() ?: return@rememberLoad null
+                DeckPayload(client.playlistSongs(pick.id), pick, pick.note.ifBlank { "风格推荐" })
+            }
+            DeckTab.DAILY -> null
+        }
+    }
+
+    val songs: List<NeteaseSong>
+    val loading: Boolean
+    val error: String?
+    val subtitle: String
+    when (tab) {
+        DeckTab.DAILY -> {
+            songs = dailySongs
+            loading = daily.loading
+            error = daily.error
+            subtitle = when {
+                !signedIn -> "登录后每天 6:00 为你更新"
+                daily.error != null -> "加载失败 · 点一下重试"
+                else -> "${artistLine(dailySongs)} 等 ${dailySongs.size.coerceAtLeast(30)} 首"
+            }
+        }
+        else -> {
+            songs = payload.value?.songs.orEmpty()
+            loading = payload.loading
+            error = payload.error
+            subtitle = when {
+                !signedIn -> "登录后为你生成"
+                payload.error != null -> "加载失败 · 点一下重试"
+                songs.isEmpty() && loading -> "正在挑选…"
+                else -> "${songs.size} 首 · ${payload.value?.note ?: tab.hint}"
+            }
+        }
+    }
+
+    val dateLine = remember(tab) {
+        when (tab) {
+            DeckTab.DAILY -> SimpleDateFormat("M月d日 EEEE", Locale.CHINA).format(Date()) + " · 每天 6:00 更新"
+            else -> tab.title + " · " + tab.hint
+        }
+    }
+    val dailySummary = remember(dailySongs) {
+        NeteasePlaylistSummary(
+            -1L,
+            "每日推荐",
+            dailySongs.firstOrNull()?.coverUrl,
+            dailySongs.size.takeIf { it > 0 } ?: 30,
+            "根据你的口味生成",
+            false,
+            false,
+            kind = NeteaseCollectionKind.DAILY,
+        )
+    }
+
+    val start by animateColorAsState(tab.start, tween(360), label = "deck-start")
+    val mid by animateColorAsState(tab.mid, tween(360), label = "deck-mid")
+    val end by animateColorAsState(tab.end, tween(360), label = "deck-end")
+    val deep by animateColorAsState(tab.deep, tween(360), label = "deck-deep")
+
+    val index = deckTabs.indexOf(tab).coerceAtLeast(0)
+    val nextTab = deckTabs[(index + 1) % deckTabs.size]
+    val afterTab = deckTabs[(index + 2) % deckTabs.size]
+    val covers = remember(songs) { songs.mapNotNull { it.coverUrl }.distinct().take(3) }
+    val playable = songs.isNotEmpty()
+
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(186.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Brush.linearGradient(listOf(start, mid, end)))
+                .clickable {
+                    haptics.tick(HapticArea.MENUS)
                     when {
-                        !signedIn -> "登录后每天 6:00 为你更新"
-                        error != null -> error
-                        loading -> "正在挑选今天的歌…"
-                        else -> "$count 首 · 根据你的口味生成"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = .85f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(12.dp))
-                if (signedIn && error == null) {
+                        error != null && tab == DeckTab.DAILY -> retryDaily()
+                        error != null -> retryPayload()
+                        tab == DeckTab.DAILY -> onOpen(dailySummary)
+                        payload.value?.summary != null -> onOpen(payload.value!!.summary!!)
+                        playable -> onPlay(songs, 0, false)
+                    }
+                },
+        ) {
+            DeckRings(Modifier.fillMaxSize())
+            Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 8.dp, top = 15.dp, bottom = 15.dp)) {
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    Text(
+                        dateLine,
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = .55f),
+                        letterSpacing = .3.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        tab.title,
+                        fontSize = 25.sp,
+                        lineHeight = 29.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        letterSpacing = .5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        subtitle,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        color = Color.White.copy(alpha = .66f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.weight(1f))
                     Row(
-                        Modifier.height(34.dp).clip(CircleShape).background(Color.White).clickable(onClick = onPlay).padding(horizontal = 16.dp),
+                        Modifier
+                            .height(32.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = if (playable) .96f else .32f))
+                            .clickable(enabled = playable) {
+                                haptics.tab(HapticArea.PLAYBACK)
+                                onPlay(songs, 0, false)
+                            }
+                            .padding(horizontal = 13.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        StyledIcon(Icons.Rounded.PlayArrow, null, Modifier.size(18.dp), tint = NeteaseRed)
-                        Spacer(Modifier.width(6.dp))
-                        Text("播放全部", style = MaterialTheme.typography.labelLarge, color = NeteaseRed, fontWeight = FontWeight.SemiBold)
+                        StyledIcon(Icons.Rounded.PlayArrow, null, Modifier.size(15.dp), tint = Color(0xFF1D1A12))
+                        Spacer(Modifier.width(5.dp))
+                        Text("播放", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D1A12))
                     }
+                }
+                Spacer(Modifier.width(6.dp))
+                DeckArt(covers, Modifier.width(104.dp).fillMaxHeight())
+                Spacer(Modifier.width(7.dp))
+                DeckRail(
+                    selected = tab,
+                    onSelect = {
+                        haptics.tick(HapticArea.MENUS)
+                        tab = it
+                    },
+                    onMore = {
+                        haptics.tick(HapticArea.MENUS)
+                        showSheet = true
+                    },
+                )
+            }
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 7.dp)
+                .height(9.dp)
+                .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
+                .background(nextTab.mid.copy(alpha = .92f)),
+        )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 15.dp)
+                .height(7.dp)
+                .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
+                .background(afterTab.mid.copy(alpha = .70f)),
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp)
+                .height(26.dp)
+                .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
+                .background(deep)
+                .clickable {
+                    haptics.tick(HapticArea.MENUS)
+                    tab = nextTab
+                }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StyledIcon(Icons.Rounded.KeyboardArrowUp, null, Modifier.size(14.dp), tint = Color.White.copy(alpha = .5f))
+            Spacer(Modifier.width(3.dp))
+            Text(nextTab.title, fontSize = 10.sp, color = Color.White.copy(alpha = .58f), maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            Text("${index + 1} / ${deckTabs.size}", fontSize = 10.sp, color = Color.White.copy(alpha = .45f))
+        }
+    }
+
+    if (showSheet) {
+        GlassBottomSheet(onDismissRequest = { showSheet = false }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                Text("推荐设置", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "每日推荐每天 6:00 由网易云按你的口味更新；风格、雷达、FM 每次切过去时重新拉取。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(14.dp))
+                DeckAction("刷新每日推荐", Icons.Rounded.Refresh) {
+                    showSheet = false
+                    tab = DeckTab.DAILY
+                    retryDaily()
+                }
+                DeckAction("打开每日推荐列表", Icons.AutoMirrored.Rounded.PlaylistPlay) {
+                    showSheet = false
+                    onOpen(dailySummary)
+                }
+                DeckAction("换成私人 FM", Icons.Rounded.Radio) {
+                    showSheet = false
+                    tab = DeckTab.FM
+                }
+                Spacer(Modifier.navigationBarsPadding().height(14.dp))
+            }
+        }
+    }
+}
+
+private fun artistLine(songs: List<NeteaseSong>): String =
+    songs.flatMap { it.artists }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .take(3)
+        .joinToString("、")
+        .ifBlank { "今日精选" }
+
+/** 唱片沟槽：以卡片右侧唱片为圆心的一圈圈细线。 */
+@Composable
+private fun DeckRings(modifier: Modifier) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val step = 9.dp.toPx()
+        val cx = size.width * .82f
+        val cy = size.height * .48f
+        val stroke = Stroke(1.dp.toPx())
+        val ink = Color.White.copy(alpha = .055f)
+        var radius = step
+        while (radius < size.width) {
+            drawCircle(ink, radius = radius, center = Offset(cx, cy), style = stroke)
+            radius += step
+        }
+    }
+}
+
+/** 扇形三张封面 + 后面露出的唱片。 */
+@Composable
+private fun DeckArt(covers: List<String?>, modifier: Modifier) {
+    Box(modifier) {
+        Box(
+            Modifier
+                .align(Alignment.CenterEnd)
+                .offset(x = 22.dp)
+                .size(92.dp)
+                .clip(CircleShape)
+                .background(Brush.radialGradient(listOf(Color(0xFF1C1C20), Color(0xFF0A0A0B)))),
+        ) {
+            Box(Modifier.align(Alignment.Center).size(30.dp).clip(CircleShape).background(Color.White.copy(alpha = .05f)))
+            Box(Modifier.align(Alignment.Center).size(4.dp).clip(CircleShape).background(Color.White.copy(alpha = .55f)))
+        }
+        val fan = remember {
+            listOf(
+                Triple(-12f, 0.dp, 12.dp),
+                Triple(-2f, 16.dp, 2.dp),
+                Triple(9f, 32.dp, 16.dp),
+            )
+        }
+        fan.forEachIndexed { index, (rotation, dx, dy) ->
+            val url = covers.getOrNull(index)
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = dx, y = dy)
+                    .size(72.dp)
+                    .graphicsLayer { rotationZ = rotation }
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(Color.White.copy(alpha = .10f)),
+            ) {
+                if (url != null) UrlImage("$url?param=300y300", Modifier.fillMaxSize())
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeckRail(selected: DeckTab, onSelect: (DeckTab) -> Unit, onMore: () -> Unit) {
+    Column(
+        Modifier.width(24.dp).fillMaxHeight(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        deckTabs.forEach { tab ->
+            RailChip(tab.chip, tab == selected) { onSelect(tab) }
+            Spacer(Modifier.height(3.dp))
+        }
+        RailChip(null, false, Icons.Rounded.Settings, onMore)
+    }
+}
+
+@Composable
+private fun RailChip(
+    label: String?,
+    active: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        Modifier
+            .size(width = 24.dp, height = 27.dp)
+            .clip(shape)
+            .background(if (active) Color.White.copy(alpha = .92f) else Color.Black.copy(alpha = .18f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (icon != null) {
+            StyledIcon(icon, null, Modifier.size(12.dp), tint = Color.White.copy(alpha = .62f))
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                label.orEmpty().forEach { ch ->
+                    Text(
+                        ch.toString(),
+                        fontSize = 9.sp,
+                        lineHeight = 10.sp,
+                        color = if (active) Color(0xFF1E1A12) else Color.White.copy(alpha = .62f),
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DeckAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StyledIcon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(12.dp))
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
     }
 }
 
