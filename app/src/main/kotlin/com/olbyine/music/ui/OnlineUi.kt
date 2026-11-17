@@ -253,7 +253,7 @@ private fun NeteaseHome(
             when {
                 tab == NeteaseTab.MINE || client == null ->
                     NeteaseMine(state, onlinePlayback, bottomContentPadding, onLogin, onRefresh, onOpenPlaylist, onOnlinePlayback, onSignOut, onOpenLibrary, onOpenSettings, client)
-                tab == NeteaseTab.DISCOVER -> NeteaseDiscover(client, state.account != null, bottomContentPadding, onOpenPlaylist, onPlay)
+                tab == NeteaseTab.DISCOVER -> NeteaseDiscover(client, state.account != null, bottomContentPadding, onOpenPlaylist, onPlay, onLogin)
                 tab == NeteaseTab.CHARTS -> NeteaseCharts(client, bottomContentPadding, onOpenPlaylist)
                 tab == NeteaseTab.SEARCH -> NeteaseSearch(client, bottomContentPadding, currentTrackId, onOpenPlaylist) { songs, index -> onPlay(songs, index, false) }
                 else -> NeteaseMessages(client, state.account != null, bottomContentPadding, onLogin)

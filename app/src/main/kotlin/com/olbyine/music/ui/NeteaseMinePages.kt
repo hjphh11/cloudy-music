@@ -123,7 +123,8 @@ internal fun NeteaseRankingScreen(
         }
         if (rows.isEmpty()) {
             if (state.loading) skeletonRows(10)
-            else item(key = "state") { LoadingOrError(false, state.error ?: "还没有听歌记录", retry, itemMotion()) }
+            else if (state.error != null) item(key = "state") { LoadingOrError(false, state.error, retry, itemMotion()) }
+            else item(key = "state") { EmptyNote("还没有听歌记录", itemMotion()) }
         }
         itemsIndexed(rows, key = { index, it -> "$index:${it.first.id}" }) { index, (song, count) ->
             Row(itemMotion().fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -179,7 +180,8 @@ internal fun NeteaseSavedAlbumsScreen(client: NeteaseClient, onBack: () -> Unit,
         item(span = { GridItemSpan(maxLineSpan) }, key = "head") { ExtrasHeader("收藏的专辑", state.value?.let { "${albums.size} 张 · 长按可取消收藏" }, onBack) }
         if (albums.isEmpty()) {
             if (state.loading) skeletonCards(6)
-            else item(span = { GridItemSpan(maxLineSpan) }, key = "state") { LoadingOrError(false, state.error ?: "还没有收藏专辑", retry) }
+            else if (state.error != null) item(span = { GridItemSpan(maxLineSpan) }, key = "state") { LoadingOrError(false, state.error, retry) }
+            else item(span = { GridItemSpan(maxLineSpan) }, key = "state") { EmptyNote("还没有收藏专辑") }
         }
         gridItems(albums, key = { it.id }) { album ->
             var menu by remember { mutableStateOf(false) }
@@ -299,7 +301,8 @@ internal fun NeteasePodcastScreen(
         }
         if (episodes.isEmpty()) {
             if (state.loading) skeletonRows(8)
-            else item(key = "state") { LoadingOrError(false, state.error ?: "这个播客还没有节目", retry, itemMotion()) }
+            else if (state.error != null) item(key = "state") { LoadingOrError(false, state.error, retry, itemMotion()) }
+            else item(key = "state") { EmptyNote("这个播客还没有节目", itemMotion()) }
         }
         itemsIndexed(episodes, key = { _, it -> it.id }) { _, episode ->
             val song = episode.song

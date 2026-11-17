@@ -4,6 +4,7 @@ package com.olbyine.music.ui
 
 import android.os.Build
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
@@ -55,6 +56,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Mail
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Refresh
@@ -102,7 +104,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import com.olbyine.music.data.HapticArea
 import com.olbyine.music.data.NeteaseArtist
 import com.olbyine.music.data.NeteaseClient
@@ -200,6 +206,21 @@ internal fun LoadingOrError(loading: Boolean, error: String?, onRetry: () -> Uni
     }
 }
 
+/** 空态：没有内容不等于出错，所以这里不给「重试」。 */
+@Composable
+internal fun EmptyNote(message: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier.fillMaxWidth().padding(vertical = 34.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun DelayedSpinner(color: Color) {
     val shown = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -252,6 +273,7 @@ internal fun NeteaseDiscover(
     bottomPadding: Dp,
     onOpen: (NeteasePlaylistSummary) -> Unit,
     onPlay: (List<NeteaseSong>, Int, Boolean) -> Unit = { _, _, _ -> },
+    onLogin: () -> Unit = {},
 ) {
     val (recommended, retryRecommended) = rememberLoad(signedIn) { if (signedIn) client.recommendedPlaylists() else emptyList() }
     val (daily, retryDaily) = rememberLoad(signedIn) { if (signedIn) client.dailySongs() else emptyList() }
@@ -302,6 +324,7 @@ internal fun NeteaseDiscover(
                 signedIn = signedIn,
                 onOpen = onOpen,
                 onPlay = onPlay,
+                onLogin = onLogin,
             )
         }
         if (signedIn) {
@@ -459,6 +482,8 @@ private class DeckContent(
     val subtitle: String,
     val dateLine: String,
     val summary: NeteasePlaylistSummary?,
+    /** 未登录：这张卡的内容全部取不到。卡上不摆灰色的播放键，摆一个真正的登录入口。 */
+    val needsSignIn: Boolean = false,
 )
 
 private suspend fun loadDeckPayload(client: NeteaseClient, tab: DeckTab): DeckPayload = when (tab) {
@@ -494,13 +519,19 @@ private fun DailyDeckCard(
     signedIn: Boolean,
     onOpen: (NeteasePlaylistSummary) -> Unit,
     onPlay: (List<NeteaseSong>, Int, Boolean) -> Unit,
+    onLogin: () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableStateOf(DeckTab.DAILY) }
     var showSheet by remember { mutableStateOf(false) }
     var attempt by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
     val haptics = rememberHaptics()
     val reduceMotion = LocalReduceMotion.current
     val scope = rememberCoroutineScope()
+
+    // 上滑这件事没法「看出来」，只能教一次。翻过三张就不再提示，页码点留着。
+    val prefs = remember { context.getSharedPreferences("cloudy.deck", android.content.Context.MODE_PRIVATE) }
+    var showDeckHint by remember { mutableStateOf(prefs.getInt("swipes", 0) < 3) }
 
     /**
      * 牌堆被推走的位移（px），**永远只落在 (-一张卡高, 0] 这一段**。
@@ -553,10 +584,12 @@ private fun DailyDeckCard(
             return DeckContent(
                 songs = dailySongs,
                 subtitle = when {
-                    !signedIn -> "登录后每天 6:00 为你更新"
+                    !signedIn -> "登录后每天 6:00 给你 30 首对口味的歌"
                     daily.error != null -> "加载失败 · 点一下重试"
                     dailySongs.isEmpty() && daily.loading -> "正在挑选今天的歌…"
-                    else -> "${artistLine(dailySongs)} 等 ${dailySongs.size.coerceAtLeast(30)} 首"
+                    // 照实报数：以前这里用 coerceAtLeast(30) 把不足 30 首显示成 30 首
+                    dailySongs.isEmpty() -> "今天还没有歌 · 点一下重试"
+                    else -> "${artistLine(dailySongs)} 等 ${dailySongs.size} 首"
                 },
                 dateLine = dailyDateLine,
                 summary = NeteasePlaylistSummary(
@@ -569,6 +602,7 @@ private fun DailyDeckCard(
                     false,
                     kind = NeteaseCollectionKind.DAILY,
                 ),
+                needsSignIn = !signedIn,
             )
         }
         val payload = cache[target]
@@ -576,7 +610,7 @@ private fun DailyDeckCard(
         return DeckContent(
             songs = songs,
             subtitle = when {
-                !signedIn -> "登录后为你生成"
+                !signedIn -> "登录后按你的口味生成"
                 payload?.error != null -> "加载失败 · 点一下重试"
                 songs.isEmpty() && payload?.loading != false -> "正在挑选…"
                 songs.isEmpty() -> "暂时取不到，点一下重试"
@@ -584,6 +618,7 @@ private fun DailyDeckCard(
             },
             dateLine = target.title + " · " + target.hint,
             summary = payload?.value?.summary,
+            needsSignIn = !signedIn,
         )
     }
 
@@ -599,6 +634,11 @@ private fun DailyDeckCard(
     fun open(target: DeckTab) {
         val content = contentOf(target)
         haptics.tick(HapticArea.MENUS)
+        // 未登录点卡不该进一个空歌单，应该是「去登录」
+        if (!signedIn) {
+            onLogin()
+            return
+        }
         when {
             target == DeckTab.DAILY && daily.error != null -> retry(target)
             target != DeckTab.DAILY && cache[target]?.error != null -> retry(target)
@@ -613,6 +653,12 @@ private fun DailyDeckCard(
         if (cards <= 0) return
         val from = deckTabs.indexOf(tab).coerceAtLeast(0)
         tab = deckTabs[(from + cards) % deckSize]
+        // 翻过三张，「上滑换一张」就不再提示了
+        if (showDeckHint) {
+            val swipes = prefs.getInt("swipes", 0) + 1
+            prefs.edit().putInt("swipes", swipes).apply()
+            if (swipes >= 3) showDeckHint = false
+        }
     }
 
     /**
@@ -665,6 +711,23 @@ private fun DailyDeckCard(
                 // 比卡片高两条：下面两张卡的边就露在这条缝里
                 .height(DeckCardHeight + DeckPeek * 2 + DeckShadowRoom)
                 .clipToBounds()
+                // 手势只有看得见的人才用得上：读屏用户给三个等价动作
+                .semantics {
+                    customActions = listOf(
+                        CustomAccessibilityAction("下一张") {
+                            scope.launch { commit(1) }
+                            true
+                        },
+                        CustomAccessibilityAction("上一张") {
+                            scope.launch { commit(deckSize - 1) }
+                            true
+                        },
+                        CustomAccessibilityAction(if (signedIn) "打开这一张" else "登录网易云") {
+                            scope.launch { open(tabState.value) }
+                            true
+                        },
+                    )
+                }
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -731,6 +794,7 @@ private fun DailyDeckCard(
                         val songs = contentOf(target).songs
                         if (songs.isNotEmpty()) onPlay(songs, 0, false)
                     },
+                    onSignIn = onLogin,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(DeckCardHeight)
@@ -752,6 +816,12 @@ private fun DailyDeckCard(
                 )
             }
         }
+        DeckPager(
+            index = index,
+            count = deckSize,
+            showHint = showDeckHint,
+            modifier = Modifier.fillMaxWidth().padding(top = 7.dp),
+        )
     }
 
     if (showSheet) {
@@ -777,6 +847,10 @@ private fun DailyDeckCard(
                 DeckAction("换成私人 FM", Icons.Rounded.Radio) {
                     showSheet = false
                     tab = DeckTab.FM
+                }
+                DeckAction("回到每日推荐", Icons.AutoMirrored.Rounded.ArrowBack) {
+                    showSheet = false
+                    tab = DeckTab.DAILY
                 }
                 Spacer(Modifier.navigationBarsPadding().height(14.dp))
             }
@@ -877,6 +951,7 @@ private fun DeckPage(
     content: DeckContent,
     modifier: Modifier = Modifier,
     onPlay: () -> Unit = {},
+    onSignIn: () -> Unit = {},
 ) {
     val covers = remember(content.songs) { content.songs.mapNotNull { it.coverUrl }.distinct().take(3) }
     val playable = content.songs.isNotEmpty()
@@ -925,7 +1000,7 @@ private fun DeckPage(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.weight(1f))
-                PlayPill(playable, onPlay)
+                if (content.needsSignIn) SignInPill(onSignIn) else PlayPill(playable, onPlay)
             }
             Spacer(Modifier.width(100.dp))
         }
@@ -967,6 +1042,83 @@ private fun PlayPill(enabled: Boolean, onPlay: () -> Unit) {
         StyledIcon(Icons.Rounded.PlayArrow, null, Modifier.size(15.dp), tint = Color(0xFF1D1A12))
         Spacer(Modifier.width(5.dp))
         Text("播放", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D1A12))
+    }
+}
+
+/**
+ * 牌堆页码：四个点，当前那张拉长成一小段。第一次进来旁边带一句「上滑换一张」，
+ * 翻过三张后自己消失——手势只能教一次，之后看点的位置就知道在第几张。
+ */
+@Composable
+private fun DeckPager(index: Int, count: Int, showHint: Boolean, modifier: Modifier = Modifier) {
+    val reduce = LocalReduceMotion.current
+    Row(
+        modifier,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showHint) {
+            Text("上滑换一张", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(7.dp))
+        }
+        for (i in 0 until count) {
+            val active = i == index
+            val dotWidth by animateDpAsState(
+                targetValue = if (active) 14.dp else 5.dp,
+                animationSpec = tween(if (reduce) 0 else 220, easing = OlbyineTokens.Motion.easeOut),
+                label = "deck-dot",
+            )
+            Box(
+                Modifier
+                    .padding(horizontal = 2.5.dp)
+                    .width(dotWidth)
+                    .height(5.dp)
+                    .clip(CircleShape)
+                    .background(
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = if (active) .58f else .16f),
+                    ),
+            )
+        }
+    }
+}
+
+/**
+ * 卡上的登录入口。未登录时它替代播放键：与其摆一个按不动的灰药丸，
+ * 不如给一个能真的往前走的主按钮。
+ */
+@Composable
+private fun SignInPill(onSignIn: () -> Unit) {
+    var pressed by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+    Row(
+        Modifier
+            .height(32.dp)
+            .graphicsLayer {
+                val scale = if (pressed) .94f else 1f
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = .96f))
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    },
+                    onTap = {
+                        haptics.tab(HapticArea.PLAYBACK)
+                        onSignIn()
+                    },
+                )
+            }
+            .padding(horizontal = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StyledIcon(Icons.Rounded.Person, null, Modifier.size(15.dp), tint = Color(0xFF1D1A12))
+        Spacer(Modifier.width(5.dp))
+        Text("登录网易云", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D1A12))
     }
 }
 
