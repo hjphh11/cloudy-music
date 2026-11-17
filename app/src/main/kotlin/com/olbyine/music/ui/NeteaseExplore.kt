@@ -810,10 +810,9 @@ private fun DeckPage(
 @Composable
 private fun DeckCounterChip(position: Int, total: Int, liquid: Boolean, source: BackdropSource) {
     val reduce = LocalReduceMotion.current
-    val lift = rememberInfiniteTransition(label = "deck-lift")
-    val arrow by lift.animateFloat(
+    val lift = rememberInfiniteTransition(label = "deck-lift").animateFloat(
         initialValue = 0f,
-        targetValue = if (reduce) 0f else -2.2f,
+        targetValue = -2.2f,
         animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "deck-arrow",
     )
@@ -841,7 +840,10 @@ private fun DeckCounterChip(position: Int, total: Int, liquid: Boolean, source: 
         StyledIcon(
             Icons.Rounded.KeyboardArrowUp,
             null,
-            Modifier.size(12.dp).offset(y = arrow.dp),
+            Modifier.size(12.dp).graphicsLayer {
+                // 只在绘制阶段读动画值，不带着整个芯片每帧重组
+                translationY = if (reduce) 0f else lift.value.dp.toPx()
+            },
             tint = Color.White.copy(alpha = .78f),
         )
         Spacer(Modifier.width(1.dp))
