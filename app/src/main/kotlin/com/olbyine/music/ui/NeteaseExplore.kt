@@ -1,13 +1,24 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package com.olbyine.music.ui
 
-import androidx.compose.animation.animateColorAsState
+import android.os.Build
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,7 +64,6 @@ import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Whatshot
@@ -64,22 +74,30 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -390,20 +408,18 @@ private fun SectionTitle(text: String, trailing: String? = null, onTrailing: () 
     }
 }
 
-/** 叠卡大卡：当前这张压在顶上，下面露两张卡边；右侧竖排切卡，底部条翻到下一张。 */
+/** 叠卡大卡：上滑把当前这张推走、下一张顶上来。跟手位移，松手走弹簧。 */
 private enum class DeckTab(
-    val chip: String,
     val title: String,
     val hint: String,
     val start: Color,
     val mid: Color,
     val end: Color,
-    val deep: Color,
 ) {
-    DAILY("日推", "每日推荐", "每天 6:00 更新", Color(0xFF2B2519), Color(0xFF6B5530), Color(0xFF8C6B37), Color(0xFF232018)),
-    STYLE("风格", "风格推荐", "按你的口味挑一张歌单", Color(0xFF241630), Color(0xFF4E2C68), Color(0xFF7B4A9C), Color(0xFF1C1224)),
-    RADAR("雷达", "私人雷达", "根据口味实时生成", Color(0xFF0F2130), Color(0xFF20475F), Color(0xFF2E7A9B), Color(0xFF0C1A23)),
-    FM("FM", "私人 FM", "无限续播，随听随换", Color(0xFF2A1414), Color(0xFF5E2626), Color(0xFF96392F), Color(0xFF20100F)),
+    DAILY("每日推荐", "每天 6:00 更新", Color(0xFF2B2519), Color(0xFF6B5530), Color(0xFF8C6B37)),
+    STYLE("风格推荐", "按你的口味挑一张歌单", Color(0xFF241630), Color(0xFF4E2C68), Color(0xFF7B4A9C)),
+    RADAR("私人雷达", "根据口味实时生成", Color(0xFF0F2130), Color(0xFF20475F), Color(0xFF2E7A9B)),
+    FM("私人 FM", "无限续播，随听随换", Color(0xFF2A1414), Color(0xFF5E2626), Color(0xFF96392F)),
 }
 
 private val deckTabs = DeckTab.entries
@@ -411,11 +427,55 @@ private val deckTabs = DeckTab.entries
 /** 网易云「私人雷达」歌单 id，取不到时回退到推荐歌单。 */
 private const val RADAR_PLAYLIST_ID = 3136952023L
 
+/** 卡片高度。手势用它换算拖动进度，改这里两处会一起跟着变。 */
+private val DeckCardHeight = 186.dp
+
 private class DeckPayload(
     val songs: List<NeteaseSong>,
     val summary: NeteasePlaylistSummary?,
     val note: String,
 )
+
+/** 一张卡此刻要显示的东西，四张卡各算各的。 */
+private class DeckContent(
+    val songs: List<NeteaseSong>,
+    val subtitle: String,
+    val dateLine: String,
+    val summary: NeteasePlaylistSummary?,
+)
+
+private suspend fun loadDeckPayload(client: NeteaseClient, tab: DeckTab): DeckPayload = when (tab) {
+    DeckTab.DAILY -> DeckPayload(emptyList(), null, "每日推荐")
+    DeckTab.FM -> DeckPayload(client.personalFm(), null, "私人 FM")
+    DeckTab.RADAR -> {
+        val radar = try {
+            client.playlistSongs(RADAR_PLAYLIST_ID)
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            emptyList()
+        }
+        if (radar.isNotEmpty()) {
+            DeckPayload(radar, null, "私人雷达")
+        } else {
+            val pick = client.recommendedPlaylists().firstOrNull()
+            if (pick == null) DeckPayload(emptyList(), null, "私人雷达")
+            else DeckPayload(client.playlistSongs(pick.id), pick, pick.note.ifBlank { "私人雷达" })
+        }
+    }
+    DeckTab.STYLE -> {
+        val pick = client.recommendedPlaylists().firstOrNull()
+        if (pick == null) DeckPayload(emptyList(), null, "风格推荐")
+        else DeckPayload(client.playlistSongs(pick.id), pick, pick.note.ifBlank { "风格推荐" })
+    }
+}
+
+/** 卡片里的玻璃小牌只在用户开了液态玻璃、且非原生风格、系统支持 RenderEffect 时才做真玻璃。 */
+@Composable
+private fun deckLiquidGlass(): Boolean {
+    if (LocalStyleSpec.current.style == com.olbyine.music.data.UiStyle.MATERIAL) return false
+    if (!LocalLiquidGlass.current) return false
+    return Build.VERSION.SDK_INT >= 31
+}
 
 @Composable
 private fun DailyDeckCard(
@@ -428,211 +488,221 @@ private fun DailyDeckCard(
 ) {
     var tab by rememberSaveable { mutableStateOf(DeckTab.DAILY) }
     var showSheet by remember { mutableStateOf(false) }
+    var settling by remember { mutableStateOf(false) }
+    var attempt by remember { mutableIntStateOf(0) }
     val haptics = rememberHaptics()
-    val dailySongs = daily.value.orEmpty()
+    val reduceMotion = LocalReduceMotion.current
+    val scope = rememberCoroutineScope()
 
-    val (payload, retryPayload) = rememberLoad(tab, signedIn) {
-        if (!signedIn || tab == DeckTab.DAILY) return@rememberLoad null
-        when (tab) {
-            DeckTab.FM -> DeckPayload(client.personalFm(), null, "私人 FM")
-            DeckTab.RADAR -> {
-                val radar = try {
-                    client.playlistSongs(RADAR_PLAYLIST_ID)
-                } catch (error: Throwable) {
-                    if (error is CancellationException) throw error
-                    emptyList()
-                }
-                if (radar.isNotEmpty()) {
-                    DeckPayload(radar, null, "私人雷达")
-                } else {
-                    val pick = client.recommendedPlaylists().firstOrNull() ?: return@rememberLoad null
-                    DeckPayload(client.playlistSongs(pick.id), pick, pick.note.ifBlank { "私人雷达" })
-                }
-            }
-            DeckTab.STYLE -> {
-                val pick = client.recommendedPlaylists().firstOrNull() ?: return@rememberLoad null
-                DeckPayload(client.playlistSongs(pick.id), pick, pick.note.ifBlank { "风格推荐" })
-            }
-            DeckTab.DAILY -> null
-        }
-    }
-
-    val songs: List<NeteaseSong>
-    val loading: Boolean
-    val error: String?
-    val subtitle: String
-    when (tab) {
-        DeckTab.DAILY -> {
-            songs = dailySongs
-            loading = daily.loading
-            error = daily.error
-            subtitle = when {
-                !signedIn -> "登录后每天 6:00 为你更新"
-                daily.error != null -> "加载失败 · 点一下重试"
-                else -> "${artistLine(dailySongs)} 等 ${dailySongs.size.coerceAtLeast(30)} 首"
-            }
-        }
-        else -> {
-            songs = payload.value?.songs.orEmpty()
-            loading = payload.loading
-            error = payload.error
-            subtitle = when {
-                !signedIn -> "登录后为你生成"
-                payload.error != null -> "加载失败 · 点一下重试"
-                songs.isEmpty() && loading -> "正在挑选…"
-                else -> "${songs.size} 首 · ${payload.value?.note ?: tab.hint}"
-            }
-        }
-    }
-
-    val dateLine = remember(tab) {
-        when (tab) {
-            DeckTab.DAILY -> SimpleDateFormat("M月d日 EEEE", Locale.CHINA).format(Date()) + " · 每天 6:00 更新"
-            else -> tab.title + " · " + tab.hint
-        }
-    }
-    val dailySummary = remember(dailySongs) {
-        NeteasePlaylistSummary(
-            -1L,
-            "每日推荐",
-            dailySongs.firstOrNull()?.coverUrl,
-            dailySongs.size.takeIf { it > 0 } ?: 30,
-            "根据你的口味生成",
-            false,
-            false,
-            kind = NeteaseCollectionKind.DAILY,
-        )
-    }
-
-    val start by animateColorAsState(tab.start, tween(360), label = "deck-start")
-    val mid by animateColorAsState(tab.mid, tween(360), label = "deck-mid")
-    val end by animateColorAsState(tab.end, tween(360), label = "deck-end")
-    val deep by animateColorAsState(tab.deep, tween(360), label = "deck-deep")
+    /** 当前这张卡相对原位的位移（px），0 = 就位，-卡高 = 完全推走。 */
+    val slide = remember { mutableFloatStateOf(0f) }
+    val tabState = rememberUpdatedState(tab)
+    val nextTabState = rememberUpdatedState(
+        deckTabs[(deckTabs.indexOf(tab).coerceAtLeast(0) + 1) % deckTabs.size],
+    )
+    val reduceState = rememberUpdatedState(reduceMotion)
 
     val index = deckTabs.indexOf(tab).coerceAtLeast(0)
     val nextTab = deckTabs[(index + 1) % deckTabs.size]
-    val afterTab = deckTabs[(index + 2) % deckTabs.size]
-    val covers = remember(songs) { songs.mapNotNull { it.coverUrl }.distinct().take(3) }
-    val playable = songs.isNotEmpty()
+
+    // 已拉过的卡留在缓存里，切回来不重复请求；进页面时顺手把下一张预取好，滑动时不至于空着
+    val cache = remember { mutableStateMapOf<DeckTab, Loaded<DeckPayload>>() }
+    LaunchedEffect(tab, signedIn, attempt) {
+        if (!signedIn) return@LaunchedEffect
+        for (target in listOf(tab, nextTab)) {
+            if (target == DeckTab.DAILY) continue
+            val cached = cache[target]
+            if (cached?.loading == true || cached?.value != null) continue
+            cache[target] = Loaded(error = cached?.error, loading = true)
+            cache[target] = try {
+                Loaded(loadDeckPayload(client, target))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Loaded(error = error.message ?: "加载失败，请检查网络")
+            }
+        }
+    }
+
+    val dailyDateLine = remember {
+        SimpleDateFormat("M月d日 EEEE", Locale.CHINA).format(Date()) + " · 每天 6:00 更新"
+    }
+
+    fun contentOf(target: DeckTab): DeckContent {
+        val dailySongs = daily.value.orEmpty()
+        if (target == DeckTab.DAILY) {
+            return DeckContent(
+                songs = dailySongs,
+                subtitle = when {
+                    !signedIn -> "登录后每天 6:00 为你更新"
+                    daily.error != null -> "加载失败 · 点一下重试"
+                    dailySongs.isEmpty() && daily.loading -> "正在挑选今天的歌…"
+                    else -> "${artistLine(dailySongs)} 等 ${dailySongs.size.coerceAtLeast(30)} 首"
+                },
+                dateLine = dailyDateLine,
+                summary = NeteasePlaylistSummary(
+                    -1L,
+                    "每日推荐",
+                    dailySongs.firstOrNull()?.coverUrl,
+                    dailySongs.size.takeIf { it > 0 } ?: 30,
+                    "根据你的口味生成",
+                    false,
+                    false,
+                    kind = NeteaseCollectionKind.DAILY,
+                ),
+            )
+        }
+        val payload = cache[target]
+        val songs = payload?.value?.songs.orEmpty()
+        return DeckContent(
+            songs = songs,
+            subtitle = when {
+                !signedIn -> "登录后为你生成"
+                payload?.error != null -> "加载失败 · 点一下重试"
+                songs.isEmpty() && payload?.loading != false -> "正在挑选…"
+                songs.isEmpty() -> "暂时取不到，点一下重试"
+                else -> "${songs.size} 首 · ${payload?.value?.note ?: target.hint}"
+            },
+            dateLine = target.title + " · " + target.hint,
+            summary = payload?.value?.summary,
+        )
+    }
+
+    fun retry(target: DeckTab) {
+        if (target == DeckTab.DAILY) {
+            retryDaily()
+            return
+        }
+        cache.remove(target)
+        attempt++
+    }
+
+    fun open(target: DeckTab) {
+        val content = contentOf(target)
+        haptics.tick(HapticArea.MENUS)
+        when {
+            target == DeckTab.DAILY && daily.error != null -> retry(target)
+            target != DeckTab.DAILY && cache[target]?.error != null -> retry(target)
+            content.summary != null -> onOpen(content.summary)
+            content.songs.isNotEmpty() -> onPlay(content.songs, 0, false)
+            else -> retry(target)
+        }
+    }
+
+    /** 一张卡推走之后落到哪张：环形，第四张之后回到日推。 */
+    fun commit() {
+        tab = nextTabState.value
+    }
 
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(186.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(Brush.linearGradient(listOf(start, mid, end)))
-                .clickable {
-                    haptics.tick(HapticArea.MENUS)
-                    when {
-                        error != null && tab == DeckTab.DAILY -> retryDaily()
-                        error != null -> retryPayload()
-                        tab == DeckTab.DAILY -> onOpen(dailySummary)
-                        payload.value?.summary != null -> onOpen(payload.value!!.summary!!)
-                        playable -> onPlay(songs, 0, false)
+                .height(DeckCardHeight)
+                .clipToBounds()
+                .pointerInput(Unit) {
+                    val height = size.height.toFloat()
+                    if (height <= 0f) return@pointerInput
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (settling) return@awaitEachGesture
+                        // 只认向上的拖动：向下留给外面的列表滚动
+                        var upward = false
+                        val grabbed = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                            if (over < 0f) {
+                                change.consume()
+                                upward = true
+                            }
+                        }
+                        if (!upward || grabbed == null) return@awaitEachGesture
+
+                        val tracker = VelocityTracker()
+                        tracker.resetTracking()
+                        tracker.addPosition(grabbed.uptimeMillis, grabbed.position)
+                        val start = (grabbed.position.y - down.position.y).coerceIn(-height, 0f)
+                        slide.floatValue = start
+
+                        var velocity = 0f
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == grabbed.id } ?: break
+                            if (!change.pressed) {
+                                velocity = tracker.calculateVelocity().y
+                                break
+                            }
+                            change.consume()
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            slide.floatValue = (slide.floatValue + change.positionChange().y).coerceIn(-height, 0f)
+                        }
+
+                        // 松手：推过三成、或者甩得够快，就翻过去；否则弹回来
+                        val progress = -slide.floatValue / height
+                        val flung = -velocity > 900f
+                        if (progress > .28f || flung) {
+                            haptics.tick(HapticArea.MENUS)
+                            settling = true
+                            scope.launch {
+                                if (!reduceState.value) {
+                                    // 先把这张推干净，再换卡归位，视觉上是同一张卡接着滑出去
+                                    animate(slide.floatValue, -height, animationSpec = spring(dampingRatio = .9f, stiffness = 420f)) { value, _ ->
+                                        slide.floatValue = value
+                                    }
+                                }
+                                commit()
+                                slide.floatValue = 0f
+                                settling = false
+                            }
+                        } else {
+                            settling = true
+                            scope.launch {
+                                animate(slide.floatValue, 0f, animationSpec = spring(dampingRatio = .74f, stiffness = 380f)) { value, _ ->
+                                    slide.floatValue = value
+                                }
+                                settling = false
+                            }
+                        }
                     }
                 },
         ) {
-            DeckRings(Modifier.fillMaxSize())
-            Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 8.dp, top = 15.dp, bottom = 15.dp)) {
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Text(
-                        dateLine,
-                        fontSize = 10.sp,
-                        color = Color.White.copy(alpha = .55f),
-                        letterSpacing = .3.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(7.dp))
-                    Text(
-                        tab.title,
-                        fontSize = 25.sp,
-                        lineHeight = 29.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                        letterSpacing = .5.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        subtitle,
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp,
-                        color = Color.White.copy(alpha = .66f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Row(
-                        Modifier
-                            .height(32.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = if (playable) .96f else .32f))
-                            .clickable(enabled = playable) {
-                                haptics.tab(HapticArea.PLAYBACK)
-                                onPlay(songs, 0, false)
-                            }
-                            .padding(horizontal = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        StyledIcon(Icons.Rounded.PlayArrow, null, Modifier.size(15.dp), tint = Color(0xFF1D1A12))
-                        Spacer(Modifier.width(5.dp))
-                        Text("播放", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D1A12))
+            // 底下那张：静止，等着被顶上来
+            DeckPage(
+                tab = nextTab,
+                content = contentOf(nextTab),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val p = (-slide.floatValue / size.height).coerceIn(0f, 1f)
+                        val scale = .94f + .06f * p
+                        scaleX = scale
+                        scaleY = scale
+                    },
+            )
+            // 上面这张：跟着手指走，走的时候轻微后仰、缩小一点
+            DeckPage(
+                tab = tab,
+                content = contentOf(tab),
+                position = index + 1,
+                total = deckTabs.size,
+                onPlay = { contentOf(tab).songs.let { songs -> if (songs.isNotEmpty()) onPlay(songs, 0, false) } },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val p = (-slide.floatValue / size.height).coerceIn(0f, 1f)
+                        translationY = slide.floatValue
+                        rotationX = p * 10f
+                        val scale = 1f - .03f * p
+                        scaleX = scale
+                        scaleY = scale
+                        cameraDistance = 18f * density
                     }
-                }
-                Spacer(Modifier.width(6.dp))
-                DeckArt(covers, Modifier.width(104.dp).fillMaxHeight())
-                Spacer(Modifier.width(7.dp))
-                DeckRail(
-                    selected = tab,
-                    onSelect = {
-                        haptics.tick(HapticArea.MENUS)
-                        tab = it
-                    },
-                    onMore = {
-                        haptics.tick(HapticArea.MENUS)
-                        showSheet = true
-                    },
-                )
-            }
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 7.dp)
-                .height(9.dp)
-                .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
-                .background(nextTab.mid.copy(alpha = .92f)),
-        )
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 15.dp)
-                .height(7.dp)
-                .clip(RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
-                .background(afterTab.mid.copy(alpha = .70f)),
-        )
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 22.dp)
-                .height(26.dp)
-                .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
-                .background(deep)
-                .clickable {
-                    haptics.tick(HapticArea.MENUS)
-                    tab = nextTab
-                }
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StyledIcon(Icons.Rounded.KeyboardArrowUp, null, Modifier.size(14.dp), tint = Color.White.copy(alpha = .5f))
-            Spacer(Modifier.width(3.dp))
-            Text(nextTab.title, fontSize = 10.sp, color = Color.White.copy(alpha = .58f), maxLines = 1)
-            Spacer(Modifier.weight(1f))
-            Text("${index + 1} / ${deckTabs.size}", fontSize = 10.sp, color = Color.White.copy(alpha = .45f))
+                    .combinedClickable(
+                        onClick = { open(tabState.value) },
+                        onLongClick = {
+                            haptics.tick(HapticArea.MENUS)
+                            showSheet = true
+                        },
+                    ),
+            )
         }
     }
 
@@ -642,7 +712,7 @@ private fun DailyDeckCard(
                 Text("推荐设置", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "每日推荐每天 6:00 由网易云按你的口味更新；风格、雷达、FM 每次切过去时重新拉取。",
+                    "每天 6:00 由网易云按你的口味更新日推；风格、雷达、FM 在滑过去时取。向上滑卡片就是换下一张，长按卡片回到这里。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -654,7 +724,7 @@ private fun DailyDeckCard(
                 }
                 DeckAction("打开每日推荐列表", Icons.AutoMirrored.Rounded.PlaylistPlay) {
                     showSheet = false
-                    onOpen(dailySummary)
+                    onOpen(contentOf(DeckTab.DAILY).summary!!)
                 }
                 DeckAction("换成私人 FM", Icons.Rounded.Radio) {
                     showSheet = false
@@ -663,6 +733,163 @@ private fun DailyDeckCard(
                 Spacer(Modifier.navigationBarsPadding().height(14.dp))
             }
         }
+    }
+}
+
+/** 一张卡：背景（渐变 + 唱片沟槽 + 扇形封面）一层，文字与按钮一层。 */
+@Composable
+private fun DeckPage(
+    tab: DeckTab,
+    content: DeckContent,
+    modifier: Modifier = Modifier,
+    position: Int = 0,
+    total: Int = 0,
+    onPlay: () -> Unit = {},
+) {
+    val liquid = deckLiquidGlass()
+    val source = rememberBackdropSource()
+    val covers = remember(content.songs) { content.songs.mapNotNull { it.coverUrl }.distinct().take(3) }
+    val playable = content.songs.isNotEmpty()
+
+    Box(modifier.clip(RoundedCornerShape(24.dp))) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .then(if (liquid) Modifier.backdropSource(source) else Modifier)
+                .background(Brush.linearGradient(listOf(tab.start, tab.mid, tab.end))),
+        ) {
+            DeckRings(Modifier.fillMaxSize())
+            DeckArt(covers, Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(112.dp))
+        }
+        Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 12.dp, top = 13.dp, bottom = 15.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        content.dateLine,
+                        modifier = Modifier.weight(1f),
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = .55f),
+                        letterSpacing = .3.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (total > 0) {
+                        Spacer(Modifier.width(8.dp))
+                        DeckCounterChip(position, total, liquid, source)
+                    }
+                }
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    tab.title,
+                    fontSize = 25.sp,
+                    lineHeight = 29.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    letterSpacing = .5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    content.subtitle,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    color = Color.White.copy(alpha = .66f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.weight(1f))
+                PlayPill(playable, onPlay)
+            }
+            Spacer(Modifier.width(100.dp))
+        }
+    }
+}
+
+/** 页码小牌：开了液态玻璃就做成一块会折射背景的小玻璃，否则是一枚半透明深色胶囊。 */
+@Composable
+private fun DeckCounterChip(position: Int, total: Int, liquid: Boolean, source: BackdropSource) {
+    val reduce = LocalReduceMotion.current
+    val lift = rememberInfiniteTransition(label = "deck-lift")
+    val arrow by lift.animateFloat(
+        initialValue = 0f,
+        targetValue = if (reduce) 0f else -2.2f,
+        animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "deck-arrow",
+    )
+    val style = remember {
+        GlassStyle(
+            cornerRadius = 11.dp,
+            blur = 5.dp,
+            tint = Color.White.copy(alpha = .16f),
+            saturation = 1.5f,
+            lens = Build.VERSION.SDK_INT >= 33,
+            refractionHeight = 9.dp,
+            refractionAmount = 7.dp,
+            highlight = Color.White.copy(alpha = .55f),
+            highlightWidth = .8.dp,
+            fallback = Color.White.copy(alpha = .18f),
+        )
+    }
+    Row(
+        Modifier
+            .height(22.dp)
+            .then(if (liquid) Modifier.glass(source, style) else Modifier.clip(CircleShape).background(Color.Black.copy(alpha = .22f)))
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StyledIcon(
+            Icons.Rounded.KeyboardArrowUp,
+            null,
+            Modifier.size(12.dp).offset(y = arrow.dp),
+            tint = Color.White.copy(alpha = .78f),
+        )
+        Spacer(Modifier.width(1.dp))
+        Text(
+            "$position / $total",
+            fontSize = 9.5.sp,
+            color = Color.White.copy(alpha = .82f),
+            fontWeight = FontWeight.Medium,
+            letterSpacing = .2.sp,
+        )
+    }
+}
+
+/** 卡里的白色播放胶囊：按下去会轻微缩小。 */
+@Composable
+private fun PlayPill(enabled: Boolean, onPlay: () -> Unit) {
+    var pressed by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+    Row(
+        Modifier
+            .height(32.dp)
+            .graphicsLayer {
+                val scale = if (pressed) .94f else 1f
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = if (enabled) .96f else .32f))
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    },
+                    onTap = {
+                        haptics.tab(HapticArea.PLAYBACK)
+                        onPlay()
+                    },
+                )
+            }
+            .padding(horizontal = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StyledIcon(Icons.Rounded.PlayArrow, null, Modifier.size(15.dp), tint = Color(0xFF1D1A12))
+        Spacer(Modifier.width(5.dp))
+        Text("播放", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D1A12))
     }
 }
 
@@ -680,7 +907,7 @@ private fun artistLine(songs: List<NeteaseSong>): String =
 private fun DeckRings(modifier: Modifier) {
     androidx.compose.foundation.Canvas(modifier) {
         val step = 9.dp.toPx()
-        val cx = size.width * .82f
+        val cx = size.width * .88f
         val cy = size.height * .48f
         val stroke = Stroke(1.dp.toPx())
         val ink = Color.White.copy(alpha = .055f)
@@ -726,55 +953,6 @@ private fun DeckArt(covers: List<String?>, modifier: Modifier) {
                     .background(Color.White.copy(alpha = .10f)),
             ) {
                 if (url != null) UrlImage("$url?param=300y300", Modifier.fillMaxSize())
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeckRail(selected: DeckTab, onSelect: (DeckTab) -> Unit, onMore: () -> Unit) {
-    Column(
-        Modifier.width(24.dp).fillMaxHeight(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        deckTabs.forEach { tab ->
-            RailChip(tab.chip, tab == selected) { onSelect(tab) }
-            Spacer(Modifier.height(3.dp))
-        }
-        RailChip(null, false, Icons.Rounded.Settings, onMore)
-    }
-}
-
-@Composable
-private fun RailChip(
-    label: String?,
-    active: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(8.dp)
-    Box(
-        Modifier
-            .size(width = 24.dp, height = 27.dp)
-            .clip(shape)
-            .background(if (active) Color.White.copy(alpha = .92f) else Color.Black.copy(alpha = .18f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (icon != null) {
-            StyledIcon(icon, null, Modifier.size(12.dp), tint = Color.White.copy(alpha = .62f))
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                label.orEmpty().forEach { ch ->
-                    Text(
-                        ch.toString(),
-                        fontSize = 9.sp,
-                        lineHeight = 10.sp,
-                        color = if (active) Color(0xFF1E1A12) else Color.White.copy(alpha = .62f),
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                }
             }
         }
     }

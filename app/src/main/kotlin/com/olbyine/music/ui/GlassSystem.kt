@@ -48,6 +48,9 @@ internal data class GlassTuning(
 
 internal val LocalGlassTuning = staticCompositionLocalOf { GlassTuning() }
 
+/** 用户是否打开了「液态玻璃」。全局提供，页面按需决定哪些元素做真玻璃。 */
+internal val LocalLiquidGlass = staticCompositionLocalOf { false }
+
 internal val LocalOnGlass = compositionLocalOf { false }
 
 internal fun GlassStyle.tuned(tuning: GlassTuning, dark: Boolean): GlassStyle {

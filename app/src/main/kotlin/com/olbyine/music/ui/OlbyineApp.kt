@@ -166,6 +166,7 @@ fun OlbyineApp(state: MainUiState, lyrics: LyricsDocument, viewModel: MainViewMo
         LocalStyleSpec provides remember(state.settings.uiStyle) { styleSpecOf(state.settings.uiStyle) },
         LocalHaptics provides haptics,
         LocalGlassTuning provides state.settings.glassTuning,
+        LocalLiquidGlass provides state.settings.liquidGlassEnabled,
         LocalReduceMotion provides reduceMotion,
         LocalPlayerFx provides state.settings.playerFx,
         LocalPlayerButtons provides state.settings.playerButtons,
