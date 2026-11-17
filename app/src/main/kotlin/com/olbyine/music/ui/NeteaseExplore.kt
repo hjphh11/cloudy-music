@@ -430,7 +430,7 @@ private const val RADAR_PLAYLIST_ID = 3136952023L
 private val DeckCardHeight = 186.dp
 
 /** 叠在下面每一层从上层下沿露出的高度。两层加起来就是容器比卡片高出多少。 */
-private val DeckPeek = 10.dp
+private val DeckPeek = 12.dp
 
 /** 卡片圆角。下层卡靠缩放收窄，圆角也跟着收，看上去才是一叠纸。 */
 private val DeckCorner = 24.dp
@@ -439,7 +439,7 @@ private val DeckCorner = 24.dp
 private val DeckShadowRoom = 12.dp
 
 /** 三层卡静止时的缩放：最上面一张满宽，下面每层依次收窄一点。 */
-private val DeckLayerScale = floatArrayOf(1f, .955f, .91f)
+private val DeckLayerScale = floatArrayOf(1f, .95f, .90f)
 
 private class DeckPayload(
     val songs: List<NeteaseSong>,
@@ -705,7 +705,7 @@ private fun DailyDeckCard(
                     .fillMaxWidth()
                     .height(DeckCardHeight)
                     .deckStack(slideRead, 2)
-                    .deckDim(slideRead, 2),
+                    .deckFace(slideRead, 2),
             )
             // 第二张：被上面那张顶着往上走，同时长到满宽——推到底就正好是新的第一张
             DeckPage(
@@ -715,7 +715,7 @@ private fun DailyDeckCard(
                     .fillMaxWidth()
                     .height(DeckCardHeight)
                     .deckStack(slideRead, 1)
-                    .deckDim(slideRead, 1),
+                    .deckFace(slideRead, 1),
             )
             // 第一张：跟手，推走之后下面两张依次补位
             DeckPage(
@@ -726,6 +726,7 @@ private fun DailyDeckCard(
                     .fillMaxWidth()
                     .height(DeckCardHeight)
                     .deckStack(slideRead, 0)
+                    .deckFace(slideRead, 0)
                     .combinedClickable(
                         onClick = { open(tabState.value) },
                         onLongClick = {
@@ -799,17 +800,25 @@ private fun Modifier.deckStack(slide: () -> Float, depth: Int): Modifier = graph
 }
 
 /**
- * 越往下越暗一点，把层次压出来。翻到一半（p → 1）它会自己褪干净，
- * 因为那一层马上就接位成新的最上面那张。
+ * 卡面：越往下压得越暗一点，再加一条一像素的亮边——层与层之间靠这条边分开，
+ * 不然深色卡压深色卡，露出来那一条会糊成一片。
+ *
+ * 暗色按 p 褪干净（那一层马上要接位成最上面那张），亮边则三层恒定：
+ * 翻页时每层都会整体上挪一级，边一样才不会在接位那一帧闪。
  */
-private fun Modifier.deckDim(slide: () -> Float, depth: Int): Modifier = drawWithContent {
+private fun Modifier.deckFace(slide: () -> Float, depth: Int): Modifier = drawWithContent {
     drawContent()
-    if (depth <= 0) return@drawWithContent
     val p = (-slide() / DeckCardHeight.toPx()).coerceIn(0f, 1f)
-    val alpha = (if (depth == 1) .12f else .24f) * (1f - p)
-    if (alpha <= .01f) return@drawWithContent
     val r = CornerRadius(DeckCorner.toPx(), DeckCorner.toPx())
-    drawRoundRect(color = Color.Black, alpha = alpha, cornerRadius = r)
+    if (depth > 0) {
+        val alpha = (if (depth == 1) .12f else .24f) * (1f - p)
+        if (alpha > .01f) drawRoundRect(color = Color.Black, alpha = alpha, cornerRadius = r)
+    }
+    drawRoundRect(
+        color = Color.White.copy(alpha = .12f),
+        cornerRadius = r,
+        style = Stroke(1.dp.toPx()),
+    )
 }
 
 /**
@@ -820,7 +829,7 @@ private fun Modifier.deckDim(slide: () -> Float, depth: Int): Modifier = drawWit
 private fun DeckUnderCard(tab: DeckTab, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .shadow(10.dp, RoundedCornerShape(DeckCorner), clip = false)
+            .shadow(8.dp, RoundedCornerShape(DeckCorner), clip = false)
             .clip(RoundedCornerShape(DeckCorner))
             .background(Brush.linearGradient(listOf(tab.start, tab.mid, tab.end))),
     ) {
@@ -843,7 +852,7 @@ private fun DeckPage(
 
     Box(
         modifier
-            .shadow(10.dp, RoundedCornerShape(DeckCorner), clip = false)
+            .shadow(8.dp, RoundedCornerShape(DeckCorner), clip = false)
             .clip(RoundedCornerShape(DeckCorner)),
     ) {
         Box(
