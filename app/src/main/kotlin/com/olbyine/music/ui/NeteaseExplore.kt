@@ -439,8 +439,13 @@ private val DeckCorner = 24.dp
 /** 容器底部留白，给最下面那张卡的投影一点地方，不然会被裁掉。 */
 private val DeckShadowRoom = 12.dp
 
-/** 三层卡静止时的缩放：最上面一张满宽，下面每层依次收窄一点。 */
-private val DeckLayerScale = floatArrayOf(1f, .95f, .90f)
+/**
+ * 三层卡静止时的缩放：最上面一张满宽，下面每层依次收窄一点。
+ *
+ * 第四个值是给「第四层」留的：它静止时被第三张完全挡住（第三张底边正好到容器底），
+ * 但翻到一半时它会顶上来补第三层的位置——有它，结算那一帧才不会少一条边。
+ */
+private val DeckLayerScale = floatArrayOf(1f, .95f, .90f, .85f)
 
 private class DeckPayload(
     val songs: List<NeteaseSong>,
@@ -498,9 +503,11 @@ private fun DailyDeckCard(
     val scope = rememberCoroutineScope()
 
     /**
-     * 牌堆整体被推走的距离（px）。0 = 第一张就位，-一张卡高 = 第二张就位，依次类推。
+     * 牌堆被推走的位移（px），**永远只落在 (-一张卡高, 0] 这一段**。
      *
-     * 它不受「一张卡」限制：一个手势里可以一路推过三四张，推过整张就自然由下一张接着顶上来。
+     * 越过一整张就当场结算：位移减掉一张、页签前进一张。因为「推到 -卡高」的画面和
+     * 「位移归零 + 换一张」的画面逐像素相同（见 [deckStack] 的接位），所以结算看不出痕迹。
+     * 正因为随时结算，手指连滑多少张都不会积压，也不会卡在「推不动」的中间态。
      */
     val slide = remember { mutableFloatStateOf(0f) }
     /** 在绘制阶段读位移，拖动时才不会每帧重组整张卡。 */
@@ -513,8 +520,6 @@ private fun DailyDeckCard(
     val cardPx = with(LocalDensity.current) { DeckCardHeight.toPx() }
     /** 牌堆里一共几张：四张一轮，推满一轮就回到第一张。 */
     val deckSize = deckTabs.size
-    /** 一个手势最多连推几张。再多就是原地打转，不如让手感停在最后一张上。 */
-    val maxTravel = cardPx * (deckSize - 1)
 
     val index = deckTabs.indexOf(tab).coerceAtLeast(0)
 
@@ -611,33 +616,45 @@ private fun DailyDeckCard(
     }
 
     /**
-     * 收尾：从当前值出发、带着松手那一刻的手速跑弹簧，落点一定对齐到整张卡上，
-     * 对齐的那一刻把 [cards] 张结账（tab 前进），牌堆位移归零——两帧之间位置和尺寸完全一样，看不出换卡。
+     * 结算：只要位移越过一整张，就当场把这一张记掉——位移减掉一张、页签前进一张，
+     * 一帧里同时生效。因为「推到 -卡高」和「位移归零 + 换下一张」的画面逐像素相同，
+     * 这一步看不到任何变化，手指却立刻又有整整一张的行程可以推。
+     *
+     * 这是「能连着滑」和「不会卡在半路」的关键：账随时结清，位移永远只在 (-卡高, 0]。
+     */
+    fun settleUp() {
+        var moved = 0
+        // 容差半像素：动画收尾落在 -卡高 时也要认，不然会差一点点永远结不掉
+        while (slide.floatValue <= -cardPx + .5f) {
+            slide.floatValue += cardPx
+            moved++
+            if (moved > deckSize * 2) break // 防卫：真出意外也不要死循环
+        }
+        if (moved > 0) commit(moved)
+    }
+
+    /**
+     * 收尾：从当前呈现值出发、带着松手那一刻的手速跑弹簧，落点对齐到整张卡，跑完结算。
      *
      * 「从当前值出发」是打断的前提——动画飞到一半被抓住，卡片就停在屏幕上那个位置接着跟手；
      * 「带着手速」是速度交接，松手瞬间不掉速，慢慢往上滑到一半放手也接得很自然。
      */
-    fun settle(to: Float, velocity: Float, cards: Int) {
+    fun settle(to: Float, velocity: Float) {
         settleJob[0]?.cancel()
         settleJob[0] = scope.launch {
             if (reduceState.value) {
-                slide.floatValue = to.coerceIn(-maxTravel, 0f)
+                slide.floatValue = to
             } else {
                 animate(
                     initialValue = slide.floatValue,
                     targetValue = to,
-                    initialVelocity = velocity,
-                    animationSpec = if (cards > 0) {
-                        // 翻过去：临界阻尼不过冲，手速再大也不会冲过落点
-                        spring(dampingRatio = 1f, stiffness = 720f)
-                    } else {
-                        // 退回原格：能量本来就小，不要晃
-                        spring(dampingRatio = .9f, stiffness = 560f)
-                    },
-                ) { value, _ -> slide.floatValue = value.coerceIn(-maxTravel, 0f) }
+                    // 手速封个顶：再快也只是「翻过去」，别让弹簧拖着跑很久
+                    initialVelocity = velocity.coerceIn(-cardPx * 6f, cardPx * 6f),
+                    // 临界阻尼不过冲，落点干脆；stiffness 大一点收得早，松手后马上能再滑
+                    animationSpec = spring(dampingRatio = 1f, stiffness = 1100f),
+                ) { value, _ -> slide.floatValue = value.coerceIn(-cardPx, 0f) }
             }
-            commit(cards)
-            slide.floatValue = 0f
+            settleUp()
         }
     }
 
@@ -649,16 +666,11 @@ private fun DailyDeckCard(
                 .height(DeckCardHeight + DeckPeek * 2 + DeckShadowRoom)
                 .clipToBounds()
                 .pointerInput(Unit) {
-                    // 任意位移落到最近的一整张卡上（四舍五入），保证收尾后位置永远对齐
-                    fun nearestCards(value: Float): Int =
-                        ((-value + cardPx * .5f) / cardPx).toInt().coerceIn(0, deckSize - 1)
-
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         // 手指一落就接管：正在跑的收尾立刻停住，牌堆从当前呈现值接着走
                         settleJob[0]?.cancel()
                         settleJob[0] = null
-                        if (slide.floatValue > 0f) slide.floatValue = 0f
                         var slopOver = 0f
                         var upward = false
                         val grabbed = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
@@ -670,18 +682,13 @@ private fun DailyDeckCard(
                             }
                         }
                         if (!upward || grabbed == null) {
-                            // 轻点、或往下滑：把停在半路的牌堆归到最近的一格，别留一堆半挂着的
-                            if (slide.floatValue < -1f) {
-                                val cards = nearestCards(slide.floatValue)
-                                settle(-cards * cardPx, 0f, cards)
-                            }
+                            // 轻点、或往下滑：把停在半路的这张送回去，别留一张半挂着的
+                            if (slide.floatValue < -1f) settle(0f, 0f)
                             return@awaitEachGesture
                         }
                         // 越过触摸阈值的这一小段也补上：过了阈值就立刻 1:1 跟手，没有死区
-                        var travel = (slide.floatValue + slopOver).coerceIn(-maxTravel, 0f)
-                        slide.floatValue = travel
-                        // 每推过一整张轻轻震一下，连推几张就有几下，像真的在翻牌
-                        var passed = (-travel / cardPx).toInt()
+                        slide.floatValue = (slide.floatValue + slopOver).coerceAtMost(0f)
+                        settleUp()
 
                         val tracker = VelocityTracker()
                         tracker.resetTracking()
@@ -696,29 +703,20 @@ private fun DailyDeckCard(
                             }
                             change.consume()
                             tracker.addPosition(change.uptimeMillis, change.position)
-                            // 位移不设一张的上限：推过整张就继续推下一张，一个手势能一路翻到底
-                            travel = (travel + change.positionChange().y).coerceIn(-maxTravel, 0f)
-                            val now = (-travel / cardPx).toInt()
-                            if (now != passed) {
-                                passed = now
-                                haptics.tick(HapticArea.MENUS)
-                            }
-                            slide.floatValue = travel
+                            // 位移照手指 1:1 走，越过整张立刻结算——所以一个手势能一路推到底，
+                            // 推多少张都行，不会有「推不动的中间态」
+                            slide.floatValue = (slide.floatValue + change.positionChange().y).coerceAtMost(0f)
+                            val before = tab
+                            settleUp()
+                            if (tab != before) haptics.tick(HapticArea.MENUS)
                         }
 
-                        // 松手：已经整张推走的先记账，再看手上这张翻不翻——
-                        // 拖过四分之一就翻；一秒钟能划完一张的手速，也翻。都不够就弹回原格。
-                        val cards = (-slide.floatValue / cardPx).toInt().coerceIn(0, deckSize - 1)
-                        val frac = -slide.floatValue - cards * cardPx
-                        val speed = velocity.coerceIn(-7000f, 0f)
-                        val turn = cards < deckSize - 1 &&
-                            (frac > cardPx * .24f || -speed > cardPx * 1.1f)
-                        if (turn) {
-                            haptics.tick(HapticArea.MENUS)
-                            settle(-(cards + 1) * cardPx, speed, cards + 1)
-                        } else {
-                            settle(-cards * cardPx, speed, cards)
-                        }
+                        // 松手：拖过四分之一就翻；一秒钟能划完一张的手速，也翻。都不够就弹回原格。
+                        val frac = (-slide.floatValue / cardPx).coerceIn(0f, 1f)
+                        val speed = velocity.coerceIn(-cardPx * 6f, 0f)
+                        val turn = frac > .24f || -speed > cardPx * 1.1f
+                        if (turn) haptics.tick(HapticArea.MENUS)
+                        settle(if (turn) -cardPx else 0f, speed)
                     }
                 },
         ) {
@@ -819,8 +817,9 @@ private fun Modifier.deckStack(travel: () -> Float, slot: Int): Modifier = graph
             scaleX = s
             scaleY = s
         }
-        // 垫在下面的一两层：被上面那张顶着往上走，同时长到满宽——顶到底就正好是新的第一张
-        depth <= 2 -> {
+        // 垫在下面的几层：被上面那张顶着往上走，同时长满一格——顶到底就正好是新的第一张。
+        // 第四层静止时被第三张完全盖住，翻到一半正好补上第三层的位置。
+        depth <= 3 -> {
             val self = DeckLayerScale[depth]
             val above = DeckLayerScale[depth - 1]
             val restSelf = h + peek * depth - h * self
@@ -831,11 +830,11 @@ private fun Modifier.deckStack(travel: () -> Float, slot: Int): Modifier = graph
             scaleX = s
             scaleY = s
         }
-        // 比第三层还深：露不出来，挪到画面下面等它轮到自己（纯位移，不占绘制）
+        // 比第四层还深：轮不到它露脸，挪到画面下面（纯位移，不占绘制）
         else -> {
-            translationY = h * 2
-            scaleX = DeckLayerScale[2]
-            scaleY = DeckLayerScale[2]
+            translationY = h * 3
+            scaleX = DeckLayerScale[3]
+            scaleY = DeckLayerScale[3]
         }
     }
 }
@@ -854,8 +853,14 @@ private fun Modifier.deckFace(travel: () -> Float, slot: Int): Modifier = drawWi
     val depth = slot - passed
     val p = ((-travel() - passed * h) / h).coerceIn(0f, 1f)
     val r = CornerRadius(DeckCorner.toPx(), DeckCorner.toPx())
-    if (depth == 1 || depth == 2) {
-        val alpha = (if (depth == 1) .12f else .24f) * (1f - p)
+    if (depth in 1..3) {
+        // 越往下压得越暗；快要接位（p → 1）时自己褪干净
+        val base = when (depth) {
+            1 -> .12f
+            2 -> .24f
+            else -> .34f
+        }
+        val alpha = base * (1f - p)
         if (alpha > .01f) drawRoundRect(color = Color.Black, alpha = alpha, cornerRadius = r)
     }
     drawRoundRect(
