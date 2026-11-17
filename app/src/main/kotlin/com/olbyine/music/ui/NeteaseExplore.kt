@@ -3,12 +3,7 @@
 package com.olbyine.music.ui
 
 import android.os.Build
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
@@ -59,7 +54,6 @@ import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
@@ -89,7 +83,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TransformOrigin
@@ -433,8 +429,17 @@ private const val RADAR_PLAYLIST_ID = 3136952023L
 /** 卡片高度。手势用它换算拖动进度，改这里两处会一起跟着变。 */
 private val DeckCardHeight = 186.dp
 
-/** 卡下面每层露出的高度。两层加起来就是容器比卡片高出多少。 */
-private val DeckPeek = 13.dp
+/** 叠在下面每一层从上层下沿露出的高度。两层加起来就是容器比卡片高出多少。 */
+private val DeckPeek = 10.dp
+
+/** 卡片圆角。下层卡靠缩放收窄，圆角也跟着收，看上去才是一叠纸。 */
+private val DeckCorner = 24.dp
+
+/** 容器底部留白，给最下面那张卡的投影一点地方，不然会被裁掉。 */
+private val DeckShadowRoom = 12.dp
+
+/** 三层卡静止时的缩放：最上面一张满宽，下面每层依次收窄一点。 */
+private val DeckLayerScale = floatArrayOf(1f, .955f, .91f)
 
 private class DeckPayload(
     val songs: List<NeteaseSong>,
@@ -501,8 +506,10 @@ private fun DailyDeckCard(
 
     /** 当前这张卡相对原位的位移（px），0 = 就位，-卡高 = 完全推走。 */
     val slide = remember { mutableFloatStateOf(0f) }
-    /** 正在跑的收尾动画。手指一落下就取消它，这样连滑时不用等上一张收完。 */
-    var settleJob by remember { mutableStateOf<Job?>(null) }
+    /** 在绘制阶段读位移，拖动时才不会每帧重组整张卡。 */
+    val slideRead: () -> Float = remember { { slide.floatValue } }
+    /** 正在跑的收尾动画。放在普通持有器里，接手/松手都不牵动重组。 */
+    val settleJob = remember { arrayOfNulls<Job>(1) }
     val tabState = rememberUpdatedState(tab)
     val nextTabState = rememberUpdatedState(
         deckTabs[(deckTabs.indexOf(tab).coerceAtLeast(0) + 1) % deckTabs.size],
@@ -601,49 +608,71 @@ private fun DailyDeckCard(
         tab = nextTabState.value
     }
 
+    /**
+     * 收尾：从当前值出发、带着松手那一刻的手速跑弹簧。
+     *
+     * 「从当前值出发」是打断的前提——动画飞到一半被抓住，卡片就停在屏幕上那个位置接着跟手，
+     * 不会跳回起点重来；「带着手速」是速度交接，松手瞬间不掉速，慢慢往上滑到一半放手也接得很自然。
+     */
+    fun settle(from: Float, to: Float, velocity: Float, turn: Boolean = false) {
+        settleJob[0]?.cancel()
+        settleJob[0] = scope.launch {
+            if (reduceState.value) {
+                slide.floatValue = to
+            } else {
+                animate(
+                    initialValue = from,
+                    targetValue = to,
+                    initialVelocity = velocity,
+                    animationSpec = if (turn) {
+                        // 带着手速飞走：允许一点点过冲，比硬停住自然
+                        spring(dampingRatio = .84f, stiffness = 620f)
+                    } else {
+                        // 弹回原位：能量本来就小，不要晃
+                        spring(dampingRatio = .92f, stiffness = 500f)
+                    },
+                ) { value, _ -> slide.floatValue = value }
+            }
+            if (turn) commit()
+            slide.floatValue = 0f
+        }
+    }
+
     Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         Box(
             Modifier
                 .fillMaxWidth()
                 // 比卡片高两条：下面两张卡的边就露在这条缝里
-                .height(DeckCardHeight + DeckPeek * 2)
+                .height(DeckCardHeight + DeckPeek * 2 + DeckShadowRoom)
                 .clipToBounds()
                 .pointerInput(Unit) {
                     val cardPx = DeckCardHeight.toPx()
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        // 手指一落就接管：正在收尾的动画立刻让位，才能一张接一张地滑
-                        settleJob?.cancel()
-                        settleJob = null
-                        // 上一张已经推过大半，就地补完，免得停在半路
-                        if (slide.floatValue <= -cardPx * .55f) {
-                            commit()
-                            slide.floatValue = 0f
-                        }
-                        // 只认向上的拖动：向下留给外面的列表滚动
+                        // 手指一落就接管：正在跑的收尾立刻停住，卡片从当前呈现值接着走
+                        settleJob[0]?.cancel()
+                        settleJob[0] = null
+                        var slopOver = 0f
                         var upward = false
                         val grabbed = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                            // 只认向上的拖动：向下留给外面的列表滚动
                             if (over < 0f) {
                                 change.consume()
                                 upward = true
+                                slopOver = over
                             }
                         }
                         if (!upward || grabbed == null) {
-                            // 轻点或往下滑：只是把被打断在半路的卡送回去，别留一张半挂着的卡
-                            if (slide.floatValue < -1f) {
-                                settleJob = scope.launch {
-                                    animate(slide.floatValue, 0f, animationSpec = spring(dampingRatio = .85f, stiffness = 700f)) { value, _ ->
-                                        slide.floatValue = value
-                                    }
-                                }
-                            }
+                            // 轻点、或往下滑：把停在半路的卡放回原位，别留一张半挂着的
+                            if (slide.floatValue < -1f) settle(slide.floatValue, 0f, 0f)
                             return@awaitEachGesture
                         }
+                        // 越过触摸阈值的这一小段也补上：过了阈值就立刻 1:1 跟手，没有死区
+                        slide.floatValue = (slide.floatValue + slopOver).coerceIn(-cardPx, 0f)
 
                         val tracker = VelocityTracker()
                         tracker.resetTracking()
                         tracker.addPosition(grabbed.uptimeMillis, grabbed.position)
-
                         var velocity = 0f
                         while (true) {
                             val event = awaitPointerEvent()
@@ -657,80 +686,46 @@ private fun DailyDeckCard(
                             slide.floatValue = (slide.floatValue + change.positionChange().y).coerceIn(-cardPx, 0f)
                         }
 
-                        // 松手：推过四分之一、或者甩得够快，就翻过去；否则弹回来
-                        val progress = -slide.floatValue / cardPx
-                        val flung = -velocity > 760f
-                        if (progress > .25f || flung) {
+                        // 松手先算「按这个速度滑下去会停在哪」，再从落点判断翻页——
+                        // 慢慢拖过四分之一张就翻；随手一甩，飘过一半也翻。不是就近吸附。
+                        val projected = (slide.floatValue + velocity * .499f).coerceAtMost(0f)
+                        if (-projected > cardPx * .5f || -slide.floatValue > cardPx * .24f) {
                             haptics.tick(HapticArea.MENUS)
-                            settleJob = scope.launch {
-                                if (!reduceState.value) {
-                                    animate(slide.floatValue, -cardPx, animationSpec = spring(dampingRatio = .86f, stiffness = 780f)) { value, _ ->
-                                        slide.floatValue = value
-                                    }
-                                }
-                                commit()
-                                slide.floatValue = 0f
-                            }
+                            settle(slide.floatValue, -cardPx, velocity, turn = true)
                         } else {
-                            settleJob = scope.launch {
-                                animate(slide.floatValue, 0f, animationSpec = spring(dampingRatio = .72f, stiffness = 640f)) { value, _ ->
-                                    slide.floatValue = value
-                                }
-                            }
+                            settle(slide.floatValue, 0f, velocity)
                         }
                     }
                 },
         ) {
-            // 最底下那张（下下张）：只铺一层底色，静止时从卡下沿露出一条窄边
+            // 第三张（下下张）：只铺底色和沟槽，静止时从第二张下沿再露出一条窄边
             DeckUnderCard(
                 tab = deckTabs[(index + 2) % deckTabs.size],
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(DeckCardHeight)
-                    .graphicsLayer {
-                        val p = (-slide.floatValue / size.height).coerceIn(0f, 1f)
-                        // 顶部当缩放原点，缩放时卡的上沿不会跟着挪
-                        transformOrigin = TransformOrigin(.5f, 0f)
-                        translationY = DeckPeek.toPx() * (2f - p)
-                        val s = .9f + .055f * p
-                        scaleX = s
-                        scaleY = s
-                    },
+                    .deckStack(slideRead, 2)
+                    .deckDim(slideRead, 2),
             )
-            // 第二张：露出的那条边被上一张顶着往上走，同时放大就位
+            // 第二张：被上面那张顶着往上走，同时长到满宽——推到底就正好是新的第一张
             DeckPage(
                 tab = nextTab,
                 content = contentOf(nextTab),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(DeckCardHeight)
-                    .graphicsLayer {
-                        val p = (-slide.floatValue / size.height).coerceIn(0f, 1f)
-                        transformOrigin = TransformOrigin(.5f, 0f)
-                        translationY = DeckPeek.toPx() * (1f - p)
-                        val s = .945f + .055f * p
-                        scaleX = s
-                        scaleY = s
-                    },
+                    .deckStack(slideRead, 1)
+                    .deckDim(slideRead, 1),
             )
-            // 上面这张：跟着手指走，走的时候轻微缩小
+            // 第一张：跟手，推走之后下面两张依次补位
             DeckPage(
                 tab = tab,
                 content = contentOf(tab),
-                position = index + 1,
-                total = deckTabs.size,
                 onPlay = { contentOf(tab).songs.let { songs -> if (songs.isNotEmpty()) onPlay(songs, 0, false) } },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(DeckCardHeight)
-                    .graphicsLayer {
-                        val p = (-slide.floatValue / size.height).coerceIn(0f, 1f)
-                        translationY = slide.floatValue
-                        // 只做位移和缩放：3D 旋转每帧都要重录整张卡，中低端机吃不消
-                        val scale = 1f - .04f * p
-                        scaleX = scale
-                        scaleY = scale
-                    }
+                    .deckStack(slideRead, 0)
                     .combinedClickable(
                         onClick = { open(tabState.value) },
                         onLongClick = {
@@ -773,15 +768,60 @@ private fun DailyDeckCard(
 }
 
 /**
+ * 叠卡里某一层的位移与缩放。depth = 0 是最上面那张（跟手），1 / 2 是垫在下面的两层。
+ *
+ * 关键在「接位」：下层静止时的位置，正好等于它上一层静止时的位置再往下让出 [DeckPeek]；
+ * 上层被推到 1（推走）时，下层恰好补到上层原来的位子上。所以不管推到一半松手、
+ * 还是翻页动画收尾切换卡片，接上的那一帧位置和尺寸都连续，不会闪一下。
+ */
+private fun Modifier.deckStack(slide: () -> Float, depth: Int): Modifier = graphicsLayer {
+    val h = DeckCardHeight.toPx()
+    val peek = DeckPeek.toPx()
+    val p = (-slide() / h).coerceIn(0f, 1f)
+    if (depth <= 0) {
+        // 最上面那张：跟着手指走，走的时候轻微缩小，像被拎起来一点
+        val s = 1f - .04f * p
+        translationY = -p * h
+        scaleX = s
+        scaleY = s
+        return@graphicsLayer
+    }
+    val self = DeckLayerScale[depth]
+    val above = DeckLayerScale[depth - 1]
+    // 这一层和它上一层静止时的落点：底边比上一层再低一滴
+    val restSelf = h + peek * depth - h * self
+    val restAbove = h + peek * (depth - 1) - h * above
+    transformOrigin = TransformOrigin(.5f, 0f)
+    translationY = restSelf + (restAbove - restSelf) * p
+    val s = self + (above - self) * p
+    scaleX = s
+    scaleY = s
+}
+
+/**
+ * 越往下越暗一点，把层次压出来。翻到一半（p → 1）它会自己褪干净，
+ * 因为那一层马上就接位成新的最上面那张。
+ */
+private fun Modifier.deckDim(slide: () -> Float, depth: Int): Modifier = drawWithContent {
+    drawContent()
+    if (depth <= 0) return@drawWithContent
+    val p = (-slide() / DeckCardHeight.toPx()).coerceIn(0f, 1f)
+    val alpha = (if (depth == 1) .12f else .24f) * (1f - p)
+    if (alpha <= .01f) return@drawWithContent
+    val r = CornerRadius(DeckCorner.toPx(), DeckCorner.toPx())
+    drawRoundRect(color = Color.Black, alpha = alpha, cornerRadius = r)
+}
+
+/**
  * 垫在最下面的卡：只画底色和唱片沟槽，不画文字与封面。
- * 它静止时只从上一张卡的下沿露出一条边，没必要为不可见的内容付绘制成本。
+ * 它静止时只从上一张卡的下沿露出一条边，没必要为看不见的内容付绘制成本。
  */
 @Composable
 private fun DeckUnderCard(tab: DeckTab, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .shadow(10.dp, RoundedCornerShape(24.dp), clip = false)
-            .clip(RoundedCornerShape(24.dp))
+            .shadow(10.dp, RoundedCornerShape(DeckCorner), clip = false)
+            .clip(RoundedCornerShape(DeckCorner))
             .background(Brush.linearGradient(listOf(tab.start, tab.mid, tab.end))),
     ) {
         DeckRings(Modifier.fillMaxSize())
@@ -794,8 +834,6 @@ private fun DeckPage(
     tab: DeckTab,
     content: DeckContent,
     modifier: Modifier = Modifier,
-    position: Int = 0,
-    total: Int = 0,
     onPlay: () -> Unit = {},
 ) {
     val liquid = deckLiquidGlass()
@@ -805,8 +843,8 @@ private fun DeckPage(
 
     Box(
         modifier
-            .shadow(10.dp, RoundedCornerShape(24.dp), clip = false)
-            .clip(RoundedCornerShape(24.dp)),
+            .shadow(10.dp, RoundedCornerShape(DeckCorner), clip = false)
+            .clip(RoundedCornerShape(DeckCorner)),
     ) {
         Box(
             Modifier
@@ -819,21 +857,14 @@ private fun DeckPage(
         }
         Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 12.dp, top = 13.dp, bottom = 15.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        content.dateLine,
-                        modifier = Modifier.weight(1f),
-                        fontSize = 10.sp,
-                        color = Color.White.copy(alpha = .55f),
-                        letterSpacing = .3.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (total > 0) {
-                        Spacer(Modifier.width(8.dp))
-                        DeckCounterChip(position, total, liquid, source)
-                    }
-                }
+                Text(
+                    content.dateLine,
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = .55f),
+                    letterSpacing = .3.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.height(7.dp))
                 Text(
                     tab.title,
@@ -859,57 +890,6 @@ private fun DeckPage(
             }
             Spacer(Modifier.width(100.dp))
         }
-    }
-}
-
-/** 页码小牌：开了液态玻璃就做成一块会折射背景的小玻璃，否则是一枚半透明深色胶囊。 */
-@Composable
-private fun DeckCounterChip(position: Int, total: Int, liquid: Boolean, source: BackdropSource) {
-    val reduce = LocalReduceMotion.current
-    val lift = rememberInfiniteTransition(label = "deck-lift").animateFloat(
-        initialValue = 0f,
-        targetValue = -2.2f,
-        animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "deck-arrow",
-    )
-    val style = remember {
-        GlassStyle(
-            cornerRadius = 11.dp,
-            blur = 5.dp,
-            tint = Color.White.copy(alpha = .16f),
-            saturation = 1.5f,
-            lens = Build.VERSION.SDK_INT >= 33,
-            refractionHeight = 9.dp,
-            refractionAmount = 7.dp,
-            highlight = Color.White.copy(alpha = .55f),
-            highlightWidth = .8.dp,
-            fallback = Color.White.copy(alpha = .18f),
-        )
-    }
-    Row(
-        Modifier
-            .height(22.dp)
-            .then(if (liquid) Modifier.glass(source, style) else Modifier.clip(CircleShape).background(Color.Black.copy(alpha = .22f)))
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        StyledIcon(
-            Icons.Rounded.KeyboardArrowUp,
-            null,
-            Modifier.size(12.dp).graphicsLayer {
-                // 只在绘制阶段读动画值，不带着整个芯片每帧重组
-                translationY = if (reduce) 0f else lift.value.dp.toPx()
-            },
-            tint = Color.White.copy(alpha = .78f),
-        )
-        Spacer(Modifier.width(1.dp))
-        Text(
-            "$position / $total",
-            fontSize = 9.5.sp,
-            color = Color.White.copy(alpha = .82f),
-            fontWeight = FontWeight.Medium,
-            letterSpacing = .2.sp,
-        )
     }
 }
 
